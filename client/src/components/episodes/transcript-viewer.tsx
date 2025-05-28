@@ -73,19 +73,19 @@ export default function TranscriptViewer({ episode, isOpen, onClose }: Transcrip
                     🤖 AI Summary
                   </h4>
                   <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {episode.summary}
+                    {String(episode.summary)}
                   </p>
                 </div>
               )}
 
               {/* Topics */}
-              {episode.topics && episode.topics.length > 0 && (
+              {episode.topics && Array.isArray(episode.topics) && episode.topics.length > 0 && (
                 <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-lg border border-green-200/50 dark:border-green-700/50">
                   <h4 className="font-medium text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
                     🏷️ Key Topics
                   </h4>
                   <div className="flex flex-wrap gap-2">
-                    {episode.topics.map((topic, index) => (
+                    {episode.topics.map((topic: string, index: number) => (
                       <Badge 
                         key={index} 
                         variant="outline" 
