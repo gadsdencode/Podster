@@ -702,15 +702,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Episode not found" });
       }
       
-      let progress = 0;
+      // Use the actual progress and step data from the episode
+      let progress = episode.progress || 0;
       let estimatedTime = "";
+      let currentStep = episode.currentStep || "Preparing to process...";
       
       if (episode.status === "processing") {
-        // Simulate progress calculation
         const startTime = episode.processingStarted?.getTime() || Date.now();
         const elapsed = Date.now() - startTime;
-        const estimatedTotal = episode.extractionMethod === "audio" ? 300000 : 120000; // 5min for audio, 2min for others
-        progress = Math.min(Math.round((elapsed / estimatedTotal) * 100), 95);
+        const estimatedTotal = episode.extractionMethod === "audio" ? 300000 : 60000; // 5min for audio, 1min for others
         
         const remaining = Math.max(0, estimatedTotal - elapsed);
         const remainingMinutes = Math.floor(remaining / 60000);
@@ -719,12 +719,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (episode.status === "completed") {
         progress = 100;
         estimatedTime = "0:00";
+        currentStep = "Processing completed";
+      } else if (episode.status === "failed") {
+        currentStep = "Processing failed";
       }
       
       res.json({
         ...episode,
         progress,
-        estimatedTime
+        estimatedTime,
+        currentStep
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
