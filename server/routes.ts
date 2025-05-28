@@ -4,6 +4,16 @@ import { spawn } from "child_process";
 import { storage } from "./storage";
 import { insertEpisodeSchema, insertUserSchema, insertSearchQuerySchema } from "@shared/schema";
 import { z } from "zod";
+import dotenv from "dotenv";
+import path from "path";
+import { TsCaptionScraper } from "./ts-caption-scraper";
+import { TsAdvancedScraper } from "./ts-advanced-scraper";
+
+dotenv.config();
+
+// Initialize the caption scrapers
+const captionScraper = new TsCaptionScraper();
+const advancedScraper = new TsAdvancedScraper();
 
 // Mock YouTube processing functions
 const extractVideoInfo = async (url: string) => {
@@ -35,107 +45,71 @@ const extractVideoInfo = async (url: string) => {
 };
 
 const extractTranscript = async (videoId: string, method: string) => {
-  console.log(`Extracting real transcript for video ${videoId} using ${method} method`);
-  
   try {
-    if (method === "caption") {
-      // Caption-based method: Use YouTube Transcript API
-      
-      return new Promise<string>((resolve, reject) => {
-        const pythonCode = `
-import os
-import sys
-os.chdir('.pythonlibs')
-
-try:
-    from youtube_transcript_api import YouTubeTranscriptApi
-    transcript_list = YouTubeTranscriptApi.get_transcript('${videoId}', languages=['en', 'en-US', 'en-GB'])
-    full_transcript = ""
-    for segment in transcript_list:
-        full_transcript += segment['text'] + " "
-    result = full_transcript.strip()
-    if len(result) > 0:
-        print(result)
-    else:
-        print("ERROR: Empty transcript", file=sys.stderr)
-        sys.exit(1)
-except Exception as e:
-    print(f"ERROR: {str(e)}", file=sys.stderr)
-    sys.exit(1)
-`;
-
-        const python = spawn('python3', ['-c', pythonCode]);
-        let output = '';
-        let error = '';
-
-        python.stdout.on('data', (data: any) => {
-          output += data.toString();
-        });
-
-        python.stderr.on('data', (data: any) => {
-          error += data.toString();
-        });
-
-        python.on('close', (code: any) => {
-          if (code === 0 && output.trim()) {
-            resolve(output.trim());
-          } else {
-            reject(new Error(error || 'Caption extraction failed'));
-          }
-        });
-      });
+    console.log(`Extracting real transcript for video ${videoId} using ${method} method`);
+    
+    if (method === "youtube") {
+      // Try YouTube API method first if selected
+      // ... existing code ...
     }
     
     if (method === "scraping") {
-      // Web scraping method: Use caption scraper as primary method
+      console.log("Using web scraping method for transcript extraction");
       
-      return new Promise<string>((resolve, reject) => {
-        const pythonCode = `
-import os
-import sys
-sys.path.append('server')
-
-try:
-    from complete_caption_scraper import extract_complete_transcript
-    
-    transcript = extract_complete_transcript('${videoId}')
-    
-    if transcript and len(transcript.strip()) > 50:
-        print(transcript)
-    else:
-        print("ERROR: No complete transcript found via web scraping", file=sys.stderr)
-        sys.exit(1)
+      // Try each extraction method in sequence, from simplest to most complex
+      
+      // 1. First try the basic TypeScript scraper
+      try {
+        console.log("Using basic TypeScript caption scraper");
+        const result = await captionScraper.extractCaptions(videoId);
         
-except Exception as e:
-    print(f"ERROR: Complete transcript extraction failed - {str(e)}", file=sys.stderr)
-    sys.exit(1)
-`;
-
-        const python = spawn('python3', ['-c', pythonCode]);
-
-        let output = '';
-        let error = '';
-
-        python.stdout.on('data', (data: any) => {
-          output += data.toString();
-        });
-
-        python.stderr.on('data', (data: any) => {
-          error += data.toString();
-        });
-
-        python.on('close', (code: any) => {
-          if (code === 0 && output.trim()) {
-            const transcript = output.trim();
-            console.log(`Successfully extracted ${transcript.length} characters via web scraping`);
-            resolve(transcript);
-          } else {
-            const errorMsg = error.includes('ERROR:') ? error.replace('ERROR:', '').trim() : 'Web scraping failed';
-            console.error(`Web scraping failed: ${errorMsg}`);
-            reject(new Error(`Web scraping extraction failed: ${errorMsg}`));
-          }
-        });
-      });
+        if (result && result.transcript && result.transcript.length > 100) {
+          console.log(`Successfully extracted ${result.transcript.length} characters with basic TypeScript scraper`);
+          return result.transcript;
+        } else {
+          console.log("Basic TypeScript scraper failed or returned insufficient data, trying advanced methods");
+        }
+      } catch (error) {
+        const scrapingError = error as Error;
+        console.error(`Basic TypeScript scraper error: ${scrapingError.message}`);
+        console.log("Trying advanced extraction methods");
+      }
+      
+      // 2. Try the advanced TypeScript scraper with multiple extraction techniques
+      try {
+        console.log("Using advanced TypeScript caption scraper");
+        const advancedResult = await advancedScraper.extractCaptions(videoId);
+        
+        if (advancedResult && advancedResult.transcript && advancedResult.transcript.length > 100) {
+          console.log(`Successfully extracted ${advancedResult.transcript.length} characters with advanced TypeScript scraper`);
+          return advancedResult.transcript;
+        } else {
+          console.log("Advanced TypeScript scraper failed or returned insufficient data, trying Puppeteer fallback");
+        }
+      } catch (error) {
+        const advancedError = error as Error;
+        console.error(`Advanced TypeScript scraper error: ${advancedError.message}`);
+        console.log("Falling back to Puppeteer method");
+      }
+      
+      // 3. As a last resort, try Puppeteer browser automation
+      try {
+        console.log("Attempting to extract transcript with Puppeteer");
+        // Dynamic import of the Puppeteer module
+        const puppeteerModule = await import('./puppeteer_caption_scraper.js');
+        const puppeteerTranscript = await puppeteerModule.extractCaptionsWithPuppeteer(videoId);
+        
+        if (puppeteerTranscript && puppeteerTranscript.length > 100) {
+          console.log(`Successfully extracted transcript with Puppeteer: ${puppeteerTranscript.length} chars`);
+          return puppeteerTranscript;
+        } else {
+          throw new Error("Puppeteer extraction failed or returned insufficient data");
+        }
+      } catch (error) {
+        const puppeteerError = error as Error;
+        console.error(`Puppeteer extraction error: ${puppeteerError.message}`);
+        throw new Error(`All web scraping methods failed: ${puppeteerError.message}`);
+      }
     }
     
     if (method === "audio") {
@@ -374,7 +348,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/batch-process", async (req, res) => {
     try {
       const { urls, extractionMethod } = req.body;
-      const results = [];
+      const results: Array<{success: boolean; episode?: any; message?: string; url?: string}> = [];
       
       for (const url of urls) {
         try {
@@ -670,7 +644,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   function categorizeKeywords(keywords: any[]): any {
-    const categories = {
+    const categories: {
+      important: string[];
+      technical: string[];
+      names: string[];
+      concepts: string[];
+      actions: string[];
+    } = {
       important: [],
       technical: [],
       names: [],

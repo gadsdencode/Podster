@@ -140,7 +140,11 @@ export class MemStorage implements IStorage {
       description: null,
       channel: null,
       duration: null,
-      thumbnailUrl: null
+      thumbnailUrl: null,
+      progress: null,
+      currentStep: null,
+      extractTopics: false,
+      generateSummary: false, 
     };
     this.episodes.set(id, episode);
     return episode;
@@ -188,7 +192,7 @@ export class MemStorage implements IStorage {
       
       if (transcript.includes(queryLower) || title.includes(queryLower)) {
         // Simple highlighting - in real app would use more sophisticated text search
-        const highlights = [];
+        const highlights: Array<{segment: string; timestamp: string; matchScore: number}> = [];
         const sentences = episode.transcript.split(/[.!?]+/);
         
         for (let i = 0; i < sentences.length; i++) {
