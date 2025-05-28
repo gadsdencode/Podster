@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { Zap, Globe, Mic } from "lucide-react";
+import { Zap, Globe, Mic, Lock } from "lucide-react";
 import type { ExtractionMethod } from "@/types";
 
 interface ExtractionMethodSelectorProps {
@@ -15,12 +15,13 @@ const methods = [
     name: "📝 Caption-Based",
     description: "Fast API extraction using YouTube's built-in captions",
     icon: Zap,
-    badge: "Fast",
-    badgeColor: "bg-blue-500/20 text-blue-400",
+    badge: "Coming Soon",
+    badgeColor: "bg-gray-500/20 text-gray-400",
     pros: ["Lightning fast", "High accuracy"],
     cons: ["May be blocked"],
-    iconColor: "text-blue-400",
-    bgColor: "bg-blue-500/20"
+    iconColor: "text-gray-400",
+    bgColor: "bg-gray-500/20",
+    disabled: true
   },
   {
     id: "scraping" as ExtractionMethod,
@@ -32,19 +33,21 @@ const methods = [
     pros: ["Always works", "Most reliable"],
     cons: ["Slightly slower"],
     iconColor: "text-purple-400",
-    bgColor: "bg-purple-500/20"
+    bgColor: "bg-purple-500/20",
+    disabled: false
   },
   {
     id: "audio" as ExtractionMethod,
     name: "🎤 Audio-Based",
     description: "Speech recognition from audio track",
     icon: Mic,
-    badge: "AI Powered",
-    badgeColor: "bg-emerald-500/20 text-emerald-400",
+    badge: "Coming Soon",
+    badgeColor: "bg-gray-500/20 text-gray-400",
     pros: ["No captions needed", "Works offline"],
     cons: ["Takes 2-5 minutes"],
-    iconColor: "text-emerald-400",
-    bgColor: "bg-emerald-500/20"
+    iconColor: "text-gray-400",
+    bgColor: "bg-gray-500/20",
+    disabled: true
   }
 ];
 
@@ -62,12 +65,15 @@ export default function ExtractionMethodSelector({ value, onChange }: Extraction
           >
             <Card
               className={cn(
-                "cursor-pointer transition-all duration-300 hover:scale-105 border-2",
-                value === method.id
+                "transition-all duration-300 border-2",
+                method.disabled 
+                  ? "opacity-70 cursor-not-allowed border-gray-500/20" 
+                  : "cursor-pointer hover:scale-105",
+                value === method.id && !method.disabled
                   ? "border-primary bg-primary/5 shadow-lg shadow-primary/20"
                   : "glassmorphism border-white/20 hover:border-white/40"
               )}
-              onClick={() => onChange(method.id)}
+              onClick={() => !method.disabled && onChange(method.id)}
             >
               <CardContent className="p-6 text-center">
                 <div className="flex items-center justify-between mb-4">
@@ -79,8 +85,17 @@ export default function ExtractionMethodSelector({ value, onChange }: Extraction
                   </span>
                 </div>
                 
-                <h5 className="font-semibold text-lg mb-2">{method.name}</h5>
-                <p className="text-sm text-muted-foreground mb-4">{method.description}</p>
+                <h5 className="font-semibold text-lg mb-2">
+                  {method.name}
+                  {method.disabled && (
+                    <span className="ml-2 inline-flex items-center">
+                      <Lock className="w-3 h-3 text-gray-400" />
+                    </span>
+                  )}
+                </h5>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {method.disabled ? "Future Feature - " : ""}{method.description}
+                </p>
                 
                 <div className="space-y-2 text-xs">
                   {method.pros.map((pro, i) => (
