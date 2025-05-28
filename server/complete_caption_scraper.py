@@ -1,6 +1,7 @@
 import re
 import requests
 import json
+import html
 from typing import Optional, Dict
 
 def extract_complete_transcript(video_id: str) -> Optional[str]:
@@ -63,6 +64,9 @@ def extract_complete_transcript(video_id: str) -> Optional[str]:
         
         # Join with minimal processing - preserve maximum content
         complete_transcript = ' '.join(text_matches)
+        
+        # Decode HTML entities first
+        complete_transcript = html.unescape(complete_transcript)
         
         # Only essential normalization
         complete_transcript = complete_transcript.replace('\xa0', ' ')  # Non-breaking spaces
