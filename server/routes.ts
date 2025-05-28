@@ -6,31 +6,62 @@ import { z } from "zod";
 
 // Mock YouTube processing functions
 const extractVideoInfo = async (url: string) => {
-  // Simulate extracting video info from YouTube URL
   const videoId = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/)?.[1];
   if (!videoId) throw new Error("Invalid YouTube URL");
   
-  return {
-    videoId,
-    title: "Sample Video Title",
-    description: "Sample video description",
-    channel: "Sample Channel",
-    duration: "15:42",
-    thumbnailUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
-  };
+  try {
+    // Use YouTube oEmbed API for real video data
+    const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch video information: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    return {
+      videoId,
+      title: data.title,
+      description: null,
+      channel: data.author_name,
+      duration: null,
+      thumbnailUrl: data.thumbnail_url
+    };
+  } catch (error: any) {
+    console.error('Error fetching real video info:', error);
+    throw new Error(`Cannot extract video information: ${error.message}`);
+  }
 };
 
 const extractTranscript = async (videoId: string, method: string) => {
-  // Simulate transcript extraction based on method
-  await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing time
+  console.log(`Attempting to extract real transcript for video ${videoId} using ${method} method`);
   
-  const sampleTranscripts = {
-    caption: "This is a sample transcript extracted using caption-based method. It contains the spoken content of the video with accurate timing information.",
-    scraping: "This is a sample transcript extracted using web scraping method. This method bypasses restrictions and provides reliable transcript extraction even when other methods fail.",
-    audio: "This is a sample transcript extracted using audio-based speech recognition. This method processes the actual audio track to generate transcripts when captions are not available."
-  };
-  
-  return sampleTranscripts[method as keyof typeof sampleTranscripts] || sampleTranscripts.scraping;
+  try {
+    // For caption-based method, try to get real captions
+    if (method === "caption") {
+      // This would require YouTube API access or caption scraping
+      throw new Error("Caption extraction requires YouTube API access or specialized scraping tools");
+    }
+    
+    // For scraping method, attempt basic transcript extraction
+    if (method === "scraping") {
+      // This would require specialized web scraping of YouTube's transcript endpoint
+      throw new Error("Web scraping method requires access to YouTube's transcript API");
+    }
+    
+    // For audio method, would need speech-to-text service
+    if (method === "audio") {
+      throw new Error("Audio extraction requires speech-to-text API access");
+    }
+    
+    throw new Error(`Unsupported extraction method: ${method}`);
+    
+  } catch (error: any) {
+    console.error(`Real transcript extraction failed: ${error.message}`);
+    
+    // Instead of fake data, throw error to inform user of the limitation
+    throw new Error(`Cannot extract real transcript: ${error.message}. This requires YouTube API access or specialized transcript extraction services.`);
+  }
 };
 
 const generateSummary = async (transcript: string) => {
