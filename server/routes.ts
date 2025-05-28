@@ -419,13 +419,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/episodes/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const success = await storage.deleteEpisode(id);
-      if (!success) {
+      
+      // Check if episode exists first
+      const episode = await storage.getEpisode(id);
+      if (!episode) {
         return res.status(404).json({ message: "Episode not found" });
       }
+      
+      const success = await storage.deleteEpisode(id);
+      if (!success) {
+        return res.status(500).json({ message: "Failed to delete episode" });
+      }
+      
       res.json({ message: "Episode deleted successfully" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Error deleting episode:", error);
+      res.status(500).json({ 
+        message: "Error deleting episode", 
+        error: error.message || "Unknown error"
+      });
     }
   });
 

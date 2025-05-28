@@ -47,11 +47,28 @@ export function useDeleteEpisode() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (id: number) => episodesApi.delete(id),
+    // Use a more specific mutation key to avoid conflicts
+    mutationKey: ['deleteEpisode'],
+    
+    mutationFn: async (id: number) => {
+      try {
+        const response = await episodesApi.delete(id);
+        return response;
+      } catch (error: any) {
+        // Extract the error message from the API response if available
+        const errorData = error.response?.data;
+        throw new Error(errorData?.message || errorData?.error || 'Failed to delete episode');
+      }
+    },
+    
     onSuccess: () => {
+      // Only invalidate queries on success
       queryClient.invalidateQueries({ queryKey: ["/api/episodes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
+    
+    // Only retry once to avoid multiple error notifications
+    retry: 0
   });
 }
 

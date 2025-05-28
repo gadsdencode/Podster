@@ -163,7 +163,21 @@ export class MemStorage implements IStorage {
   }
 
   async deleteEpisode(id: number): Promise<boolean> {
-    return this.episodes.delete(id);
+    try {
+      // First, delete any processing queue items that reference this episode
+      const queueItemsToDelete = Array.from(this.processingQueue.values())
+        .filter(item => item.episodeId === id);
+      
+      for (const item of queueItemsToDelete) {
+        this.processingQueue.delete(item.id);
+      }
+      
+      // Then delete the episode itself
+      return this.episodes.delete(id);
+    } catch (error) {
+      console.error("Error deleting episode:", error);
+      return false;
+    }
   }
 
   async getAllEpisodes(userId?: number): Promise<Episode[]> {
@@ -431,8 +445,22 @@ export class PostgresStorage implements IStorage {
   }
 
   async deleteEpisode(id: number): Promise<boolean> {
-    const result = await db.delete(episodes).where(eq(episodes.id, id));
-    return result.length > 0;
+    try {
+      // Use a transaction to ensure both operations succeed or fail together
+      const result = await db.transaction(async (tx) => {
+        // First, delete any processing queue items that reference this episode
+        await tx.delete(processingQueue).where(eq(processingQueue.episodeId, id));
+        
+        // Then delete the episode itself
+        const deleteResult = await tx.delete(episodes).where(eq(episodes.id, id));
+        return deleteResult.length > 0;
+      });
+      
+      return result;
+    } catch (error) {
+      console.error("Error deleting episode:", error);
+      return false;
+    }
   }
 
   async getAllEpisodes(userId?: number): Promise<Episode[]> {
