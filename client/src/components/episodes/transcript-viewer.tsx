@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Clock, User, FileText } from "lucide-react";
+import HighlightedTranscript from "./highlighted-transcript";
 import type { Episode } from "@/../../shared/schema";
 
 interface TranscriptViewerProps {
@@ -98,18 +99,14 @@ export default function TranscriptViewer({ episode, isOpen, onClose }: Transcrip
                 </div>
               )}
 
-              {/* Full Transcript */}
+              {/* Full Transcript with AI Keyword Highlighting */}
               <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
                 <h4 className="font-medium text-gray-900 dark:text-gray-200 mb-4 flex items-center gap-2">
                   📝 Full Transcript
                 </h4>
                 
                 {episode.transcript ? (
-                  <div className="prose prose-gray dark:prose-invert max-w-none">
-                    <div className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed font-mono text-sm bg-gray-50 dark:bg-gray-900/50 p-4 rounded border">
-                      {episode.transcript}
-                    </div>
-                  </div>
+                  <HighlightedTranscript transcript={episode.transcript} />
                 ) : (
                   <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                     <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
