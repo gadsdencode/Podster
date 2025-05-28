@@ -16,41 +16,130 @@ export interface AnalysisResult {
   categories: {
     important: string[];
     technical: string[];
-    names: string[];
-    concepts: string[];
-    actions: string[];
+    name: string[];
+    concept: string[];
+    action: string[];
   };
 }
 
-export async function analyzeKeywords(transcript: string): Promise<AnalysisResult> {
+export interface AnalysisProgressCallback {
+  (status: string, progress: number): void;
+}
+
+// Default timeout of 30 seconds
+const DEFAULT_TIMEOUT = 30000;
+
+export async function analyzeKeywords(
+  transcript: string, 
+  progressCallback?: AnalysisProgressCallback,
+  timeout: number = DEFAULT_TIMEOUT
+): Promise<AnalysisResult> {
   try {
+    // Notify that we're starting
+    progressCallback?.('Starting keyword analysis...', 10);
+    
+    // Create a controller to enable timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    // Start the request
+    progressCallback?.('Sending request to server...', 20);
+    
     const response = await fetch('/api/analyze-keywords', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ transcript }),
+      signal: controller.signal
     });
 
+    // Clear the timeout since we got a response
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
+      progressCallback?.('Error from server', 0);
       throw new Error(`Failed to analyze keywords: ${response.statusText}`);
     }
 
+    progressCallback?.('Processing results...', 80);
     const result = await response.json();
+    
+    // Analysis complete
+    progressCallback?.('Analysis complete!', 100);
     return result;
   } catch (error) {
     console.error('Error analyzing keywords:', error);
-    return {
-      keywords: [],
-      categories: {
-        important: [],
-        technical: [],
-        names: [],
-        concepts: [],
-        actions: []
-      }
-    };
+    
+    // Check if this was an abort/timeout
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      progressCallback?.('Analysis timed out. Using simplified analysis.', 90);
+      return generateFallbackAnalysis(transcript);
+    }
+    
+    // Other errors
+    progressCallback?.('Analysis failed. Using simplified analysis.', 90);
+    return generateFallbackAnalysis(transcript);
   }
+}
+
+function generateFallbackAnalysis(transcript: string): AnalysisResult {
+  // Very basic fallback that just extracts frequent words
+  const words = transcript.toLowerCase().match(/\b\w+\b/g) || [];
+  const wordCounts = new Map<string, number>();
+  
+  for (const word of words) {
+    if (word.length < 4) continue; // Skip short words
+    wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
+  }
+  
+  // Get most frequent words
+  const keywords = Array.from(wordCounts.entries())
+    .filter(([word, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([word, count]) => {
+      // Simple categorization
+      let category: 'important' | 'technical' | 'name' | 'concept' | 'action' = 'important';
+      
+      if (/^[A-Z]/.test(word)) {
+        category = 'name';
+      } else if (/ing$/.test(word)) {
+        category = 'action';
+      } else if (/tion$|ment$|ity$|ism$/.test(word)) {
+        category = 'concept';
+      } else if (/ology$|ical$|tech|data|code/.test(word)) {
+        category = 'technical';
+      }
+      
+      return {
+        keyword: word,
+        category,
+        confidence: Math.min(0.6, count / 30),
+        positions: findAllPositions(transcript, word)
+      };
+    });
+  
+  // Create categories
+  const categories: AnalysisResult['categories'] = {
+    important: [],
+    technical: [],
+    name: [],
+    concept: [],
+    action: []
+  };
+  
+  for (const kw of keywords) {
+    switch (kw.category) {
+      case 'important': categories.important.push(kw.keyword); break;
+      case 'technical': categories.technical.push(kw.keyword); break;
+      case 'name': categories.name.push(kw.keyword); break;
+      case 'concept': categories.concept.push(kw.keyword); break;
+      case 'action': categories.action.push(kw.keyword); break;
+    }
+  }
+  
+  return { keywords, categories };
 }
 
 function findAllPositions(text: string, keyword: string): Array<{start: number, end: number}> {
