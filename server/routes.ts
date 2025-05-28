@@ -39,7 +39,7 @@ const extractTranscript = async (videoId: string, method: string) => {
   try {
     if (method === "caption") {
       // Caption-based method: Use YouTube Transcript API
-      const { spawn } = require('child_process');
+      const { spawn } = await import('child_process');
       
       return new Promise<string>((resolve, reject) => {
         const pythonCode = `
@@ -88,7 +88,7 @@ except Exception as e:
     
     if (method === "scraping") {
       // Web scraping method: Use caption scraper as primary method
-      const { spawn } = require('child_process');
+      const { spawn } = await import('child_process');
       
       return new Promise<string>((resolve, reject) => {
         const pythonCode = `
