@@ -12,11 +12,26 @@ import {
   Download, 
   RefreshCw, 
   AlertTriangle,
-  BarChart3
+  BarChart3,
+  LogOut
 } from "lucide-react";
+import { useAdminAuth } from "@/hooks/use-admin-auth";
+import { Navigate } from "react-router-dom";
+import { useEffect } from "react";
 
 export default function Admin() {
   const { data: stats, isLoading } = useSystemStats();
+  const { isAuthenticated, isLoading: authLoading, logout } = useAdminAuth();
+
+  // If authentication is still loading, show nothing
+  if (authLoading) {
+    return null;
+  }
+
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    return <Navigate to="/admin/login" replace />;
+  }
 
   return (
     <div className="space-y-8">
@@ -24,13 +39,22 @@ export default function Admin() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center space-y-4"
+        className="flex justify-between items-center"
       >
         <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-        <p className="text-muted-foreground">
-          Manage users, monitor system performance, and configure settings
-        </p>
+        <Button
+          variant="outline"
+          className="flex items-center gap-2"
+          onClick={logout}
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </Button>
       </motion.div>
+      
+      <p className="text-muted-foreground">
+        Manage users, monitor system performance, and configure settings
+      </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content */}

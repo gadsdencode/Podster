@@ -139,3 +139,36 @@ export const exportApi = {
     return response.blob();
   }
 };
+
+export const adminApi = {
+  login: async (username: string, password: string): Promise<{ success: boolean }> => {
+    const response = await apiRequest("POST", "/api/admin/login", { username, password });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || "Login failed");
+    }
+    
+    return response.json();
+  },
+  
+  logout: async (): Promise<{ success: boolean }> => {
+    const response = await apiRequest("POST", "/api/admin/logout");
+    return response.json();
+  },
+  
+  checkAuth: async (): Promise<{ isAuthenticated: boolean }> => {
+    try {
+      const response = await apiRequest("GET", "/api/admin/check-auth");
+      
+      if (response.ok) {
+        return response.json();
+      } else {
+        return { isAuthenticated: false };
+      }
+    } catch (error) {
+      console.error("Auth check error:", error);
+      return { isAuthenticated: false };
+    }
+  }
+};

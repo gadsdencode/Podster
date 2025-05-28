@@ -8,6 +8,13 @@
       "when": 1748436540810,
       "tag": "0000_harsh_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1748466984509,
+      "tag": "0001_lazy_rockslide",
+      "breakpoints": true
     }
   ]
 }

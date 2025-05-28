@@ -295,6 +295,88 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Admin Authentication
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required" });
+      }
+      
+      const isValid = await storage.verifyAdminCredentials({ username, password });
+      
+      if (isValid) {
+        // Set admin session cookie
+        req.session.isAdmin = true;
+        return res.status(200).json({ success: true });
+      } else {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+    } catch (error: any) {
+      console.error("Admin login error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  app.post("/api/admin/logout", (req, res) => {
+    // Clear admin session
+    req.session.isAdmin = false;
+    res.status(200).json({ success: true });
+  });
+  
+  app.get("/api/admin/check-auth", (req, res) => {
+    if (req.session.isAdmin) {
+      return res.status(200).json({ isAuthenticated: true });
+    } else {
+      return res.status(401).json({ isAuthenticated: false });
+    }
+  });
+  
+  // Middleware to check admin authentication
+  const requireAdminAuth = (req: any, res: any, next: any) => {
+    if (req.session.isAdmin) {
+      next();
+    } else {
+      res.status(401).json({ message: "Unauthorized" });
+    }
+  };
+
+  // Protected admin routes
+  app.get("/api/admin/users", requireAdminAuth, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/users", requireAdminAuth, async (req, res) => {
+    try {
+      const validatedData = insertUserSchema.parse(req.body);
+      const user = await storage.createUser(validatedData);
+      res.status(201).json(user);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteUser(id);
+      
+      if (success) {
+        res.json({ message: "User deleted successfully" });
+      } else {
+        res.status(404).json({ message: "User not found" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Episode management endpoints
   app.post("/api/episodes", async (req, res) => {
     try {
@@ -680,40 +762,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(401).json({ message: "Invalid credentials" });
       }
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/admin/users", async (req, res) => {
-    try {
-      const validatedData = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(validatedData);
-      const { password: _, ...userWithoutPassword } = user;
-      res.status(201).json(userWithoutPassword);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/admin/users", async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      const usersWithoutPasswords = users.map(({ password: _, ...user }) => user);
-      res.json(usersWithoutPasswords);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.delete("/api/admin/users/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const success = await storage.deleteUser(id);
-      if (!success) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      res.json({ message: "User deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

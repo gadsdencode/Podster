@@ -1,10 +1,29 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import session from "express-session";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Set up session middleware with a simple cookie-based session
+app.use(session({
+  secret: 'podster-admin-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { 
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Declare session properties for TypeScript
+declare module 'express-session' {
+  interface SessionData {
+    isAdmin: boolean;
+  }
+}
 
 app.use((req, res, next) => {
   const start = Date.now();

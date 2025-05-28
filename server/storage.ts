@@ -2,11 +2,12 @@ import {
   users, episodes, searchQueries, processingQueue,
   type User, type InsertUser, type Episode, type InsertEpisode,
   type SearchQuery, type InsertSearchQuery, type ProcessingQueueItem,
-  type SystemStats, type SearchResult
+  type SystemStats, type SearchResult, admin
 } from "@shared/schema";
 import { db } from './db';
 import { eq, desc, sql, and, or, like, isNull } from 'drizzle-orm';
 import { SQL } from 'drizzle-orm/sql';
+import type { AdminLogin } from "@shared/schema";
 
 export interface IStorage {
   // User management
@@ -41,6 +42,14 @@ export interface IStorage {
   // Analytics
   getSystemStats(): Promise<SystemStats>;
   getUserStats(userId: number): Promise<any>;
+
+  // Admin Authentication
+  verifyAdminCredentials(credentials: AdminLogin): Promise<boolean>;
+}
+
+export interface AdminCredentials {
+  username: string;
+  password: string;
 }
 
 export class MemStorage implements IStorage {
@@ -365,6 +374,23 @@ export class MemStorage implements IStorage {
       totalSearches: userSearches.length,
       recentActivity: userEpisodes.slice(0, 5)
     };
+  }
+
+  // Admin Authentication
+  async verifyAdminCredentials(credentials: AdminLogin): Promise<boolean> {
+    try {
+      const result = await db.select().from(admin).where(
+        and(
+          eq(admin.username, credentials.username),
+          eq(admin.password, credentials.password)
+        )
+      );
+      
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error verifying admin credentials:", error);
+      return false;
+    }
   }
 }
 
@@ -746,6 +772,23 @@ export class PostgresStorage implements IStorage {
       totalSearches,
       recentActivity
     };
+  }
+
+  // Admin Authentication
+  async verifyAdminCredentials(credentials: AdminLogin): Promise<boolean> {
+    try {
+      const result = await db.select().from(admin).where(
+        and(
+          eq(admin.username, credentials.username),
+          eq(admin.password, credentials.password)
+        )
+      );
+      
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error verifying admin credentials:", error);
+      return false;
+    }
   }
 }
 
