@@ -219,32 +219,35 @@ class CaptionScraper:
 
     def _parse_xml_captions(self, xml_content: str) -> str:
         """Parse XML caption format (YouTube's timedtext format)"""
-        # More comprehensive regex to capture ALL text content, including multi-line and complex formats
-        patterns = [
-            r'<text[^>]*>([^<]+)</text>',  # Simple format
-            r'<text[^>]*><!\[CDATA\[([^\]]+)\]\]></text>',  # CDATA format
-            r'<text[^>]*>([^<]*(?:<[^/][^>]*>[^<]*</[^>]*>[^<]*)*)</text>'  # Complex nested format
-        ]
+        # Extract ALL text elements using the most comprehensive approach
+        text_matches = re.findall(r'<text[^>]*>([^<]+)</text>', xml_content, re.DOTALL)
         
-        all_text = []
-        for pattern in patterns:
-            text_matches = re.findall(pattern, xml_content, re.DOTALL | re.MULTILINE)
-            for match in text_matches:
-                # Clean HTML entities and tags from the match
-                cleaned_match = re.sub(r'<[^>]+>', '', match)
-                cleaned = self._clean_text(cleaned_match)
-                if cleaned and len(cleaned.strip()) > 1:
-                    all_text.append(cleaned)
+        print(f"Found {len(text_matches)} text elements in XML")
         
-        if all_text:
-            full_transcript = ' '.join(all_text)
-            print(f"Extracted {len(full_transcript)} characters from XML captions")
+        if text_matches:
+            print(f"Raw text matches found: {len(text_matches)} elements")
+            
+            # Join all text with absolutely minimal processing to capture everything
+            raw_transcript = ' '.join(text_matches)
+            print(f"Raw joined transcript: {len(raw_transcript)} characters")
+            
+            # Only normalize whitespace, keep all content
+            full_transcript = raw_transcript.replace('\xa0', ' ').replace('\n', ' ')
+            full_transcript = re.sub(r'\s+', ' ', full_transcript).strip()
+            
+            print(f"Final processed transcript: {len(full_transcript)} characters from {len(text_matches)} text elements")
+            
+            # Ensure we're getting the complete content
+            if len(full_transcript) < 38000:
+                print(f"WARNING: Transcript may be incomplete - only {len(full_transcript)} chars (expected ~38K+)")
+            
             return full_transcript
         
-        # Enhanced fallback: extract any text content with better regex
+        # If no text elements found, try extracting all content between tags
+        print("No text elements found, trying fallback extraction")
         simple_text = re.sub(r'<[^>]+>', ' ', xml_content)
         cleaned_fallback = self._clean_text(simple_text)
-        print(f"Using fallback extraction: {len(cleaned_fallback)} characters")
+        print(f"Fallback extraction: {len(cleaned_fallback)} characters")
         return cleaned_fallback
 
     def _parse_json_captions(self, json_content: str) -> str:
@@ -290,21 +293,25 @@ class CaptionScraper:
             return None
 
     def _clean_text(self, text: str) -> str:
-        """Clean and normalize text"""
+        """Clean and normalize text while preserving maximum content"""
         if not text:
             return ""
         
-        # Remove HTML entities
+        # Decode HTML entities more comprehensively
         text = text.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-        text = text.replace('&quot;', '"').replace('&#39;', "'")
+        text = text.replace('&quot;', '"').replace('&#39;', "'").replace('&apos;', "'")
+        text = text.replace('&nbsp;', ' ')
         
-        # Remove excessive whitespace
+        # Handle special unicode characters that YouTube uses
+        text = text.replace('\xa0', ' ')  # Non-breaking space
+        text = text.replace('\n', ' ')   # Convert newlines to spaces
+        
+        # Normalize whitespace but preserve content
         text = re.sub(r'\s+', ' ', text)
         
-        # Remove common caption artifacts
+        # Only remove very obvious caption artifacts, keep everything else
         text = re.sub(r'\[Music\]', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\[Applause\]', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'\[Laughter\]', '', text, flags=re.IGNORECASE)
         
         return text.strip()
 
