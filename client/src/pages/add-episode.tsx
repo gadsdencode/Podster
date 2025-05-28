@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useCreateEpisode } from "@/hooks/use-episodes";
 import ExtractionMethodSelector from "@/components/episodes/extraction-method-selector";
-import ProcessingStatus from "@/components/episodes/processing-status";
+import SimpleProcessingIndicator from "@/components/episodes/simple-processing-indicator";
 import { Link, Video, Zap, Layers } from "lucide-react";
 import type { ExtractionMethod } from "@/types";
 
@@ -165,9 +165,9 @@ export default function AddEpisode() {
           className="space-y-6"
         >
           {processingEpisodeId && (
-            <ProcessingStatus 
+            <SimpleProcessingIndicator 
               episodeId={processingEpisodeId}
-              onComplete={() => setProcessingEpisodeId(null)}
+              onClose={() => setProcessingEpisodeId(null)}
             />
           )}
 
