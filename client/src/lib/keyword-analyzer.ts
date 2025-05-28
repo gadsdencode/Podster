@@ -24,29 +24,20 @@ export interface AnalysisResult {
 
 export async function analyzeKeywords(transcript: string): Promise<AnalysisResult> {
   try {
-    // Split transcript into manageable chunks if too long
-    const maxChunkSize = 3000;
-    const chunks = transcript.length > maxChunkSize 
-      ? splitIntoChunks(transcript, maxChunkSize)
-      : [transcript];
+    const response = await fetch('/api/analyze-keywords', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ transcript }),
+    });
 
-    const allKeywords: KeywordHighlight[] = [];
-    
-    for (const chunk of chunks) {
-      const chunkKeywords = await analyzeChunk(chunk);
-      allKeywords.push(...chunkKeywords);
+    if (!response.ok) {
+      throw new Error(`Failed to analyze keywords: ${response.statusText}`);
     }
 
-    // Merge duplicate keywords and find their positions in the full transcript
-    const mergedKeywords = mergeAndFindPositions(allKeywords, transcript);
-    
-    // Categorize keywords
-    const categories = categorizeKeywords(mergedKeywords);
-
-    return {
-      keywords: mergedKeywords,
-      categories
-    };
+    const result = await response.json();
+    return result;
   } catch (error) {
     console.error('Error analyzing keywords:', error);
     return {
@@ -60,107 +51,6 @@ export async function analyzeKeywords(transcript: string): Promise<AnalysisResul
       }
     };
   }
-}
-
-async function analyzeChunk(text: string): Promise<KeywordHighlight[]> {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are an expert text analyst. Extract the most important keywords and phrases from the given text. 
-        
-        Categorize each keyword as:
-        - important: Key concepts, main topics, critical information
-        - technical: Technical terms, jargon, specialized vocabulary
-        - name: Names of people, places, organizations, products
-        - concept: Abstract ideas, theories, methodologies
-        - action: Verbs describing important actions or processes
-        
-        Provide a confidence score (0-1) for each keyword's importance.
-        Return only keywords that appear in the text, no invented terms.
-        Focus on words and phrases that would help someone quickly understand the content.
-        
-        Respond with JSON in this format:
-        {
-          "keywords": [
-            {
-              "keyword": "exact phrase from text",
-              "category": "important|technical|name|concept|action",
-              "confidence": 0.95
-            }
-          ]
-        }`
-      },
-      {
-        role: "user",
-        content: text
-      }
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.3,
-    max_tokens: 1000
-  });
-
-  const result = JSON.parse(response.choices[0].message.content || '{"keywords":[]}');
-  
-  return result.keywords.map((kw: any) => ({
-    keyword: kw.keyword,
-    category: kw.category,
-    confidence: kw.confidence,
-    positions: []
-  }));
-}
-
-function splitIntoChunks(text: string, maxSize: number): string[] {
-  const chunks: string[] = [];
-  const sentences = text.split(/[.!?]+/);
-  let currentChunk = '';
-  
-  for (const sentence of sentences) {
-    if (currentChunk.length + sentence.length > maxSize && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
-      currentChunk = sentence;
-    } else {
-      currentChunk += (currentChunk ? '. ' : '') + sentence;
-    }
-  }
-  
-  if (currentChunk.trim()) {
-    chunks.push(currentChunk.trim());
-  }
-  
-  return chunks;
-}
-
-function mergeAndFindPositions(keywords: KeywordHighlight[], fullText: string): KeywordHighlight[] {
-  const keywordMap = new Map<string, KeywordHighlight>();
-  
-  // Merge duplicate keywords
-  for (const keyword of keywords) {
-    const key = keyword.keyword.toLowerCase();
-    if (keywordMap.has(key)) {
-      const existing = keywordMap.get(key)!;
-      existing.confidence = Math.max(existing.confidence, keyword.confidence);
-    } else {
-      keywordMap.set(key, { ...keyword, positions: [] });
-    }
-  }
-  
-  // Find all positions of each keyword in the full text
-  const result: KeywordHighlight[] = [];
-  
-  for (const keyword of Array.from(keywordMap.values())) {
-    const positions = findAllPositions(fullText, keyword.keyword);
-    if (positions.length > 0) {
-      result.push({
-        ...keyword,
-        positions
-      });
-    }
-  }
-  
-  return result.sort((a, b) => b.confidence - a.confidence);
 }
 
 function findAllPositions(text: string, keyword: string): Array<{start: number, end: number}> {
@@ -192,38 +82,6 @@ function findAllPositions(text: string, keyword: string): Array<{start: number, 
   }
   
   return positions;
-}
-
-function categorizeKeywords(keywords: KeywordHighlight[]): AnalysisResult['categories'] {
-  const categories: AnalysisResult['categories'] = {
-    important: [],
-    technical: [],
-    names: [],
-    concepts: [],
-    actions: []
-  };
-  
-  for (const keyword of keywords) {
-    switch (keyword.category) {
-      case 'important':
-        categories.important.push(keyword.keyword);
-        break;
-      case 'technical':
-        categories.technical.push(keyword.keyword);
-        break;
-      case 'name':
-        categories.names.push(keyword.keyword);
-        break;
-      case 'concept':
-        categories.concepts.push(keyword.keyword);
-        break;
-      case 'action':
-        categories.actions.push(keyword.keyword);
-        break;
-    }
-  }
-  
-  return categories;
 }
 
 export function highlightText(text: string, keywords: KeywordHighlight[]): string {
