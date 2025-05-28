@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCreateEpisode } from "@/hooks/use-episodes";
 import ExtractionMethodSelector from "@/components/episodes/extraction-method-selector";
 import SimpleProcessingIndicator from "@/components/episodes/simple-processing-indicator";
+import BatchProcessDialog from "@/components/episodes/batch-process-dialog";
 import { Link, Video, Zap, Layers } from "lucide-react";
 import type { ExtractionMethod } from "@/types";
 
@@ -18,6 +19,7 @@ export default function AddEpisode() {
   const [generateSummary, setGenerateSummary] = useState(false);
   const [extractTopics, setExtractTopics] = useState(false);
   const [processingEpisodeId, setProcessingEpisodeId] = useState<number | null>(null);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   
   const { toast } = useToast();
   const createEpisodeMutation = useCreateEpisode();
@@ -116,7 +118,7 @@ export default function AddEpisode() {
                       <Checkbox
                         id="summary"
                         checked={generateSummary}
-                        onCheckedChange={setGenerateSummary}
+                        onCheckedChange={(checked) => setGenerateSummary(checked === true)}
                       />
                       <Label htmlFor="summary" className="text-sm">
                         Generate AI summary
@@ -126,7 +128,7 @@ export default function AddEpisode() {
                       <Checkbox
                         id="topics"
                         checked={extractTopics}
-                        onCheckedChange={setExtractTopics}
+                        onCheckedChange={(checked) => setExtractTopics(checked === true)}
                       />
                       <Label htmlFor="topics" className="text-sm">
                         Extract key topics
@@ -148,6 +150,7 @@ export default function AddEpisode() {
                     type="button"
                     variant="outline"
                     className="glassmorphism border-white/20"
+                    onClick={() => setBatchDialogOpen(true)}
                   >
                     <Layers className="mr-2 h-4 w-4" />
                     Batch Process
@@ -234,6 +237,13 @@ export default function AddEpisode() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Batch Processing Dialog */}
+      <BatchProcessDialog 
+        open={batchDialogOpen}
+        onOpenChange={setBatchDialogOpen}
+        extractionMethod="scraping" // Always use scraping for batch processing
+      />
     </div>
   );
 }
