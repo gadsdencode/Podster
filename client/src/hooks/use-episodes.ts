@@ -69,13 +69,19 @@ export function useProcessingStatus(episodeId: number) {
     queryKey: ["/api/processing-status", episodeId],
     queryFn: () => episodesApi.getProcessingStatus(episodeId),
     enabled: !!episodeId,
-    refetchInterval: (data) => {
-      // Poll every 2 seconds if processing, stop when completed or failed
-      if (data?.status === "processing") {
-        return 2000;
+    refetchInterval: (query) => {
+      // Poll every 500ms for real-time updates when processing
+      if (query.state.data?.status === "processing") {
+        return 500;
+      }
+      // Continue polling for a few seconds after completion to show final state
+      if (query.state.data?.status === "completed" || query.state.data?.status === "failed") {
+        return 3000;
       }
       return false;
     },
+    staleTime: 0, // Always fetch fresh data
+    gcTime: 0, // Don't cache old data
   });
 }
 

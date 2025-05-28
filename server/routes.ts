@@ -243,13 +243,14 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
       currentStep: "Initializing extraction",
       processingStarted: new Date()
     });
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Step 2: Extract transcript (60%)
     await storage.updateEpisode(episodeId, { 
       progress: 30,
       currentStep: "Extracting transcript"
     });
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
     const wordCount = transcript.split(/\s+/).length;
@@ -258,7 +259,7 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
       progress: 60,
       currentStep: "Transcript extracted successfully"
     });
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
     let summary = null;
     let topics: string[] = [];
