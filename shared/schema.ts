@@ -26,11 +26,15 @@ export const episodes = pgTable("episodes", {
   summary: text("summary"),
   topics: jsonb("topics").default([]),
   wordCount: integer("word_count"),
+  progress: integer("progress").default(0),
+  currentStep: text("current_step").default("Preparing to process..."),
   processingStarted: timestamp("processing_started"),
   processingCompleted: timestamp("processing_completed"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   userId: integer("user_id").references(() => users.id).notNull(),
+  generateSummary: boolean("generate_summary").default(false),
+  extractTopics: boolean("extract_topics").default(false),
 });
 
 export const searchQueries = pgTable("search_queries", {

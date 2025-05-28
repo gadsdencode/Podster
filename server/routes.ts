@@ -108,7 +108,7 @@ const extractTopics = async (transcript: string) => {
   }
 };
 
-// Function to process episodes automatically
+// Function to process episodes automatically with progress tracking
 const processEpisode = async (episodeId: number, options: { generateSummary?: boolean; extractTopics?: boolean }) => {
   try {
     const episode = await storage.getEpisode(episodeId);
@@ -119,37 +119,70 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
 
     console.log(`Starting processing for episode ${episodeId} with method: ${episode.extractionMethod}`);
     
-    // Update status to processing
+    // Step 1: Initialize processing (10%)
     await storage.updateEpisode(episodeId, { 
       status: "processing",
+      progress: 10,
+      currentStep: "Initializing extraction",
       processingStarted: new Date()
     });
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Extract transcript
+    // Step 2: Extract transcript (60%)
+    await storage.updateEpisode(episodeId, { 
+      progress: 30,
+      currentStep: "Extracting transcript"
+    });
+    
     const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
     const wordCount = transcript.split(/\s+/).length;
+    
+    await storage.updateEpisode(episodeId, { 
+      progress: 60,
+      currentStep: "Transcript extracted successfully"
+    });
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     let summary = null;
     let topics: string[] = [];
     
-    // Generate AI content if requested
+    // Step 3: Generate AI content if requested
     if (options.generateSummary) {
+      await storage.updateEpisode(episodeId, { 
+        progress: 70,
+        currentStep: "Generating AI summary"
+      });
       console.log(`Generating AI summary for episode ${episodeId}`);
       summary = await generateSummary(transcript);
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     if (options.extractTopics) {
+      await storage.updateEpisode(episodeId, { 
+        progress: 85,
+        currentStep: "Extracting key topics"
+      });
       console.log(`Extracting AI topics for episode ${episodeId}`);
       topics = await extractTopics(transcript);
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
-    // Update episode with results
+    // Step 4: Finalize (100%)
+    await storage.updateEpisode(episodeId, { 
+      progress: 95,
+      currentStep: "Finalizing processing"
+    });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Complete processing
     await storage.updateEpisode(episodeId, {
       status: "completed",
       transcript,
       summary,
       topics,
       wordCount,
+      progress: 100,
+      currentStep: "Processing completed",
       processingCompleted: new Date()
     });
 
@@ -159,6 +192,8 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
     await storage.updateEpisode(episodeId, {
       status: "failed",
       errorMessage: error.message,
+      progress: 0,
+      currentStep: "Processing failed",
       processingCompleted: new Date()
     });
   }

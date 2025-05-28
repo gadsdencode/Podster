@@ -87,14 +87,7 @@ export default function ProcessingStatus({ episodeId, onComplete }: ProcessingSt
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">
-                {status.status === "processing" 
-                  ? `Extracting transcript using ${status.extractionMethod} method...`
-                  : status.status === "completed"
-                  ? "Transcript extraction completed successfully"
-                  : status.status === "failed"
-                  ? status.errorMessage || "Processing failed"
-                  : "Preparing to process..."
-                }
+                {status.currentStep || "Preparing to process..."}
               </span>
               <span className={statusInfo.color}>
                 {status.progress || 0}%
@@ -140,16 +133,30 @@ export default function ProcessingStatus({ episodeId, onComplete }: ProcessingSt
           {status.status === "processing" && (
             <div className="space-y-2">
               <div className="flex items-center space-x-3 text-sm">
-                <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                <span className="text-emerald-400">Video information extracted</span>
+                <div className={`w-2 h-2 rounded-full ${(status.progress || 0) >= 10 ? 'bg-emerald-500' : 'bg-slate-600'}`}></div>
+                <span className={(status.progress || 0) >= 10 ? "text-emerald-400" : "text-muted-foreground"}>
+                  Initialization complete
+                </span>
               </div>
               <div className="flex items-center space-x-3 text-sm">
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <span>Extracting transcript...</span>
+                <div className={`w-2 h-2 rounded-full ${(status.progress || 0) >= 30 ? 'bg-emerald-500' : (status.progress || 0) >= 10 ? 'bg-blue-500 animate-pulse' : 'bg-slate-600'}`}></div>
+                <span className={(status.progress || 0) >= 60 ? "text-emerald-400" : (status.progress || 0) >= 30 ? "text-blue-400" : "text-muted-foreground"}>
+                  Transcript extraction
+                </span>
               </div>
+              {(status.generateSummary || status.extractTopics) && (
+                <div className="flex items-center space-x-3 text-sm">
+                  <div className={`w-2 h-2 rounded-full ${(status.progress || 0) >= 85 ? 'bg-emerald-500' : (status.progress || 0) >= 70 ? 'bg-purple-500 animate-pulse' : 'bg-slate-600'}`}></div>
+                  <span className={(status.progress || 0) >= 85 ? "text-emerald-400" : (status.progress || 0) >= 70 ? "text-purple-400" : "text-muted-foreground"}>
+                    AI processing
+                  </span>
+                </div>
+              )}
               <div className="flex items-center space-x-3 text-sm">
-                <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
-                <span className="text-muted-foreground">Processing content</span>
+                <div className={`w-2 h-2 rounded-full ${(status.progress || 0) >= 100 ? 'bg-emerald-500' : (status.progress || 0) >= 95 ? 'bg-amber-500 animate-pulse' : 'bg-slate-600'}`}></div>
+                <span className={(status.progress || 0) >= 100 ? "text-emerald-400" : (status.progress || 0) >= 95 ? "text-amber-400" : "text-muted-foreground"}>
+                  Finalizing
+                </span>
               </div>
             </div>
           )}
