@@ -6,6 +6,7 @@ export function useEpisodes() {
   return useQuery({
     queryKey: ["/api/episodes"],
     queryFn: episodesApi.getAll,
+    refetchInterval: 5000, // Refresh every 5 seconds to catch status updates
   });
 }
 
