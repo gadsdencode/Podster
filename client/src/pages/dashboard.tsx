@@ -2,13 +2,23 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Play, Clock, CheckCircle, Database, Plus, ArrowRight } from "lucide-react";
+import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye } from "lucide-react";
 import { useSystemStats } from "@/hooks/use-episodes";
 import { useRecentEpisodes } from "@/hooks/use-episodes";
+import TranscriptViewer from "@/components/episodes/transcript-viewer";
+import { useState } from "react";
+import type { Episode } from "@shared/schema";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useSystemStats();
   const { data: recentEpisodes, isLoading: episodesLoading } = useRecentEpisodes();
+  const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
+
+  const handleViewTranscript = (episode: Episode) => {
+    setSelectedEpisode(episode);
+    setIsTranscriptOpen(true);
+  };
 
   return (
     <div className="space-y-8">
@@ -170,7 +180,7 @@ export default function Dashboard() {
                   <CardContent className="p-4">
                     <h3 className="font-medium text-sm line-clamp-2 mb-2">{episode.title}</h3>
                     <p className="text-xs text-muted-foreground mb-3">{episode.channel}</p>
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-xs mb-3">
                       <span className={`px-2 py-1 rounded ${
                         episode.extractionMethod === "caption" ? "bg-blue-500/20 text-blue-400" :
                         episode.extractionMethod === "scraping" ? "bg-purple-500/20 text-purple-400" :
@@ -184,6 +194,17 @@ export default function Dashboard() {
                         {episode.wordCount ? `${episode.wordCount} words` : ""}
                       </span>
                     </div>
+                    <div className="flex justify-end">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleViewTranscript(episode)}
+                        disabled={!episode.transcript}
+                        title={episode.transcript ? "View transcript" : "Transcript not available"}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -191,6 +212,15 @@ export default function Dashboard() {
           )}
         </div>
       </motion.section>
+
+      {/* Transcript Viewer Modal */}
+      {selectedEpisode && (
+        <TranscriptViewer 
+          episode={selectedEpisode}
+          isOpen={isTranscriptOpen}
+          onClose={() => setIsTranscriptOpen(false)}
+        />
+      )}
     </div>
   );
 }
