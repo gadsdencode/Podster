@@ -45,10 +45,12 @@ const extractTranscript = async (videoId: string, method: string) => {
         const pythonCode = `
 import os
 import sys
+import json
 os.chdir('.pythonlibs')
-from youtube_transcript_api import YouTubeTranscriptApi
 
+# Try YouTube Transcript API first
 try:
+    from youtube_transcript_api import YouTubeTranscriptApi
     transcript_list = YouTubeTranscriptApi.get_transcript('${videoId}', languages=['en', 'en-US', 'en-GB'])
     full_transcript = ""
     for segment in transcript_list:
@@ -56,12 +58,30 @@ try:
     result = full_transcript.strip()
     if len(result) > 0:
         print(result)
-    else:
-        print("ERROR: Empty transcript", file=sys.stderr)
+        sys.exit(0)
+except Exception as api_error:
+    print(f"API failed: {api_error}", file=sys.stderr)
+    
+    # Fallback to web scraping
+    try:
+        sys.path.append('../server')
+        from caption_scraper import CaptionScraper
+        
+        scraper = CaptionScraper()
+        result = scraper.extract_captions_from_page('${videoId}')
+        
+        if result and result.get('transcript'):
+            transcript = result['transcript']
+            if len(transcript.strip()) > 50:
+                print(transcript)
+                sys.exit(0)
+        
+        print("ERROR: No transcript found using any method", file=sys.stderr)
         sys.exit(1)
-except Exception as e:
-    print(f"ERROR: {str(e)}", file=sys.stderr)
-    sys.exit(1)
+        
+    except Exception as scrape_error:
+        print(f"ERROR: Both API and scraping failed - {scrape_error}", file=sys.stderr)
+        sys.exit(1)
 `;
 
         const python = spawn('python3', ['-c', pythonCode]);
