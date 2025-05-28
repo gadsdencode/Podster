@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { spawn } from "child_process";
 import { storage } from "./storage";
 import { insertEpisodeSchema, insertUserSchema, insertSearchQuerySchema } from "@shared/schema";
 import { z } from "zod";
@@ -39,7 +40,6 @@ const extractTranscript = async (videoId: string, method: string) => {
   try {
     if (method === "caption") {
       // Caption-based method: Use YouTube Transcript API
-      const { spawn } = await import('child_process');
       
       return new Promise<string>((resolve, reject) => {
         const pythonCode = `
@@ -88,7 +88,6 @@ except Exception as e:
     
     if (method === "scraping") {
       // Web scraping method: Use caption scraper as primary method
-      const { spawn } = await import('child_process');
       
       return new Promise<string>((resolve, reject) => {
         const pythonCode = `
