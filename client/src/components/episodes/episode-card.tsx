@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Eye, Trash2, RotateCcw } from "lucide-react";
 import { useDeleteEpisode } from "@/hooks/use-episodes";
 import { useToast } from "@/hooks/use-toast";
+import TranscriptViewer from "./transcript-viewer";
+import { useState } from "react";
 import type { Episode } from "@shared/schema";
 
 interface EpisodeCardProps {
@@ -15,6 +17,7 @@ interface EpisodeCardProps {
 export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
   const { toast } = useToast();
   const deleteEpisodeMutation = useDeleteEpisode();
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
 
   const handleDelete = async () => {
     try {
@@ -86,52 +89,66 @@ export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
 
   if (viewMode === "list") {
     return (
-      <Card className="glassmorphism border-white/10 hover:bg-white/5 transition-colors">
-        <CardContent className="p-6">
-          <div className="flex items-center space-x-6">
-            <img 
-              src={episode.thumbnailUrl || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&auto=format&fit=crop&w=120&h=80"} 
-              alt={episode.title}
-              className="w-20 h-12 object-cover rounded"
-            />
-            
-            <div className="flex-1 min-w-0">
-              <h3 className="font-medium text-sm line-clamp-1 mb-1">{episode.title}</h3>
-              <p className="text-xs text-muted-foreground mb-2">{episode.channel} • {episode.duration}</p>
+      <>
+        <Card className="glassmorphism border-white/10 hover:bg-white/5 transition-colors">
+          <CardContent className="p-6">
+            <div className="flex items-center space-x-6">
+              <img 
+                src={episode.thumbnailUrl || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&auto=format&fit=crop&w=120&h=80"} 
+                alt={episode.title}
+                className="w-20 h-12 object-cover rounded"
+              />
+              
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-sm line-clamp-1 mb-1">{episode.title}</h3>
+                <p className="text-xs text-muted-foreground mb-2">{episode.channel} • {episode.duration}</p>
+                <div className="flex items-center space-x-2">
+                  <Badge className={getMethodColor(episode.extractionMethod)}>
+                    {getMethodText(episode.extractionMethod)}
+                  </Badge>
+                  <Badge className={getStatusColor(episode.status)}>
+                    {getStatusText(episode.status)}
+                  </Badge>
+                </div>
+              </div>
+              
               <div className="flex items-center space-x-2">
-                <Badge className={getMethodColor(episode.extractionMethod)}>
-                  {getMethodText(episode.extractionMethod)}
-                </Badge>
-                <Badge className={getStatusColor(episode.status)}>
-                  {getStatusText(episode.status)}
-                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {episode.wordCount ? `${episode.wordCount} words` : ""}
+                </span>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setIsTranscriptOpen(true)}
+                  disabled={!episode.transcript}
+                  title={episode.transcript ? "View transcript" : "Transcript not available"}
+                >
+                  <Eye className="h-4 w-4" />
+                </Button>
+                {episode.status === "failed" && (
+                  <Button variant="ghost" size="sm">
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleteEpisodeMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-            
-            <div className="flex items-center space-x-2">
-              <span className="text-xs text-muted-foreground">
-                {episode.wordCount ? `${episode.wordCount} words` : ""}
-              </span>
-              <Button variant="ghost" size="sm">
-                <Eye className="h-4 w-4" />
-              </Button>
-              {episode.status === "failed" && (
-                <Button variant="ghost" size="sm">
-                  <RotateCcw className="h-4 w-4" />
-                </Button>
-              )}
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={handleDelete}
-                disabled={deleteEpisodeMutation.isPending}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        
+        <TranscriptViewer 
+          episode={episode}
+          isOpen={isTranscriptOpen}
+          onClose={() => setIsTranscriptOpen(false)}
+        />
+      </>
     );
   }
 
@@ -172,7 +189,13 @@ export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
             </div>
             
             <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setIsTranscriptOpen(true)}
+                disabled={!episode.transcript}
+                title={episode.transcript ? "View transcript" : "Transcript not available"}
+              >
                 <Eye className="h-4 w-4" />
               </Button>
               {episode.status === "failed" && (
@@ -192,6 +215,12 @@ export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
           </div>
         </CardContent>
       </Card>
+      
+      <TranscriptViewer 
+        episode={episode}
+        isOpen={isTranscriptOpen}
+        onClose={() => setIsTranscriptOpen(false)}
+      />
     </motion.div>
   );
 }
