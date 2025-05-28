@@ -219,21 +219,33 @@ class CaptionScraper:
 
     def _parse_xml_captions(self, xml_content: str) -> str:
         """Parse XML caption format (YouTube's timedtext format)"""
-        # Extract text from <text> tags
-        text_matches = re.findall(r'<text[^>]*>([^<]+)</text>', xml_content)
+        # More comprehensive regex to capture ALL text content, including multi-line and complex formats
+        patterns = [
+            r'<text[^>]*>([^<]+)</text>',  # Simple format
+            r'<text[^>]*><!\[CDATA\[([^\]]+)\]\]></text>',  # CDATA format
+            r'<text[^>]*>([^<]*(?:<[^/][^>]*>[^<]*</[^>]*>[^<]*)*)</text>'  # Complex nested format
+        ]
         
         all_text = []
-        for match in text_matches:
-            cleaned = self._clean_text(match)
-            if cleaned and len(cleaned) > 2:
-                all_text.append(cleaned)
+        for pattern in patterns:
+            text_matches = re.findall(pattern, xml_content, re.DOTALL | re.MULTILINE)
+            for match in text_matches:
+                # Clean HTML entities and tags from the match
+                cleaned_match = re.sub(r'<[^>]+>', '', match)
+                cleaned = self._clean_text(cleaned_match)
+                if cleaned and len(cleaned.strip()) > 1:
+                    all_text.append(cleaned)
         
         if all_text:
-            return ' '.join(all_text)
+            full_transcript = ' '.join(all_text)
+            print(f"Extracted {len(full_transcript)} characters from XML captions")
+            return full_transcript
         
-        # Fallback: extract any text content
+        # Enhanced fallback: extract any text content with better regex
         simple_text = re.sub(r'<[^>]+>', ' ', xml_content)
-        return self._clean_text(simple_text)
+        cleaned_fallback = self._clean_text(simple_text)
+        print(f"Using fallback extraction: {len(cleaned_fallback)} characters")
+        return cleaned_fallback
 
     def _parse_json_captions(self, json_content: str) -> str:
         """Parse JSON caption format"""
@@ -248,13 +260,33 @@ class CaptionScraper:
                         for seg in event['segs']:
                             if 'utf8' in seg:
                                 text_parts.append(seg['utf8'])
+                    # Also check for direct text in events
+                    elif 'utf8' in event:
+                        text_parts.append(event['utf8'])
                 
                 if text_parts:
-                    return ' '.join([self._clean_text(text) for text in text_parts])
+                    full_transcript = ' '.join([self._clean_text(text) for text in text_parts if text])
+                    print(f"Extracted {len(full_transcript)} characters from JSON captions")
+                    return full_transcript
+            
+            # Handle other JSON formats that might have text arrays
+            if 'body' in data and isinstance(data['body'], list):
+                text_parts = []
+                for item in data['body']:
+                    if isinstance(item, dict) and 'utf8' in item:
+                        text_parts.append(item['utf8'])
+                    elif isinstance(item, str):
+                        text_parts.append(item)
+                
+                if text_parts:
+                    full_transcript = ' '.join([self._clean_text(text) for text in text_parts if text])
+                    print(f"Extracted {len(full_transcript)} characters from JSON body")
+                    return full_transcript
             
             return None
             
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
             return None
 
     def _clean_text(self, text: str) -> str:
