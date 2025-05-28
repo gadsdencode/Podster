@@ -108,6 +108,62 @@ const extractTopics = async (transcript: string) => {
   }
 };
 
+// Function to process episodes automatically
+const processEpisode = async (episodeId: number, options: { generateSummary?: boolean; extractTopics?: boolean }) => {
+  try {
+    const episode = await storage.getEpisode(episodeId);
+    if (!episode) {
+      console.error(`Episode ${episodeId} not found`);
+      return;
+    }
+
+    console.log(`Starting processing for episode ${episodeId} with method: ${episode.extractionMethod}`);
+    
+    // Update status to processing
+    await storage.updateEpisode(episodeId, { 
+      status: "processing",
+      processingStarted: new Date()
+    });
+
+    // Extract transcript
+    const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
+    const wordCount = transcript.split(/\s+/).length;
+    
+    let summary = null;
+    let topics: string[] = [];
+    
+    // Generate AI content if requested
+    if (options.generateSummary) {
+      console.log(`Generating AI summary for episode ${episodeId}`);
+      summary = await generateSummary(transcript);
+    }
+    
+    if (options.extractTopics) {
+      console.log(`Extracting AI topics for episode ${episodeId}`);
+      topics = await extractTopics(transcript);
+    }
+    
+    // Update episode with results
+    await storage.updateEpisode(episodeId, {
+      status: "completed",
+      transcript,
+      summary,
+      topics,
+      wordCount,
+      processingCompleted: new Date()
+    });
+
+    console.log(`Processing completed for episode ${episodeId}`);
+  } catch (error: any) {
+    console.error(`Processing failed for episode ${episodeId}:`, error);
+    await storage.updateEpisode(episodeId, {
+      status: "failed",
+      errorMessage: error.message,
+      processingCompleted: new Date()
+    });
+  }
+};
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Episode management endpoints
@@ -143,6 +199,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Add to processing queue
       await storage.addToQueue(episode.id);
+      
+      // Start processing immediately
+      setTimeout(async () => {
+        try {
+          await processEpisode(episode.id, {
+            generateSummary: validatedData.generateSummary,
+            extractTopics: validatedData.extractTopics
+          });
+        } catch (error) {
+          console.error('Error starting episode processing:', error);
+        }
+      }, 1000); // Small delay to allow response to be sent
       
       res.status(201).json(updatedEpisode || episode);
     } catch (error: any) {
