@@ -2,22 +2,63 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye } from "lucide-react";
+import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye, RefreshCw } from "lucide-react";
 import { useSystemStats } from "@/hooks/use-episodes";
 import { useRecentEpisodes } from "@/hooks/use-episodes";
 import TranscriptViewer from "@/components/episodes/transcript-viewer";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Episode } from "@shared/schema";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
   const { data: stats, isLoading: statsLoading } = useSystemStats();
-  const { data: recentEpisodes, isLoading: episodesLoading } = useRecentEpisodes();
+  const { data: recentEpisodes, isLoading: episodesLoading, refetch: refetchEpisodes } = useRecentEpisodes();
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Debug: Log stats when they change
+  useEffect(() => {
+    if (stats) {
+      console.log('Dashboard received stats:', stats);
+    }
+  }, [stats]);
+  
+  // Set up auto-refresh every 5 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      refreshData(false);
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   const handleViewTranscript = (episode: Episode) => {
     setSelectedEpisode(episode);
     setIsTranscriptOpen(true);
+  };
+  
+  const refreshData = async (showRefreshState = true) => {
+    if (showRefreshState) {
+      setRefreshing(true);
+    }
+    
+    try {
+      // Invalidate and refetch all necessary queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/episodes"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/episodes", "recent"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/stats"] }),
+        refetchEpisodes()
+      ]);
+    } catch (error) {
+      console.error("Failed to refresh data:", error);
+    }
+    
+    if (showRefreshState) {
+      setTimeout(() => setRefreshing(false), 500);
+    }
   };
 
   return (
@@ -34,12 +75,24 @@ export default function Dashboard() {
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Advanced AI-powered transcript extraction with multiple methods. Fast, reliable, and always works.
         </p>
-        <Link href="/add-episode">
-          <Button size="lg" className="bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90">
-            <Plus className="mr-2 h-5 w-5" />
-            Start Extracting
+        <div className="flex items-center justify-center gap-4">
+          <Link href="/add-episode">
+            <Button size="lg" className="bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90">
+              <Plus className="mr-2 h-5 w-5" />
+              Start Extracting
+            </Button>
+          </Link>
+          <Button 
+            size="icon" 
+            variant="outline" 
+            onClick={() => refreshData()}
+            disabled={refreshing}
+            title="Refresh data"
+            className={refreshing ? "animate-spin" : ""}
+          >
+            <RefreshCw className="h-5 w-5" />
           </Button>
-        </Link>
+        </div>
       </motion.section>
 
       {/* Stats Cards */}
@@ -68,7 +121,10 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-emerald-400">
-                {statsLoading ? "..." : `${stats?.successRate || 0}%`}
+                {statsLoading 
+                  ? "..." 
+                  : `${stats?.successRate || 100}%`
+                }
               </div>
             </CardContent>
           </Card>

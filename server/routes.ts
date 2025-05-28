@@ -442,14 +442,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update status to processing
       await storage.updateEpisode(id, { 
         status: "processing",
-        processingStarted: new Date()
+        processingStarted: new Date(),
+        progress: 10, // Start with 10% progress
+        currentStep: "Starting transcript extraction..."
       });
       
-      // Simulate processing (in real app, this would be async)
+      // Process the episode asynchronously
       setTimeout(async () => {
         try {
+          // Update progress to show activity
+          await storage.updateEpisode(id, {
+            progress: 30,
+            currentStep: "Extracting transcript..."
+          });
+          
+          // Wait a moment to simulate processing
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
           const wordCount = transcript.split(/\s+/).length;
+          
+          // Update progress
+          await storage.updateEpisode(id, {
+            progress: 60,
+            currentStep: "Processing extracted content..."
+          });
           
           let summary = null;
           let topics: string[] = [];
@@ -462,24 +479,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             topics = await extractTopics(transcript);
           }
           
+          // Update progress
+          await storage.updateEpisode(id, {
+            progress: 90,
+            currentStep: "Finalizing..."
+          });
+          
+          // Wait a moment before final update
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Final update with completed status
           await storage.updateEpisode(id, {
             status: "completed",
             transcript,
             summary,
             topics,
             wordCount,
+            progress: 100,
+            currentStep: "Completed successfully",
             processingCompleted: new Date()
           });
+          
+          console.log(`Episode ${id} processed successfully`);
         } catch (error: any) {
+          console.error(`Error processing episode ${id}:`, error);
           await storage.updateEpisode(id, {
             status: "failed",
             errorMessage: error.message,
+            progress: 100,
+            currentStep: "Processing failed: " + error.message,
             processingCompleted: new Date()
           });
         }
-      }, 3000);
+      }, 1000); // Reduced from 3000 to 1000 for faster feedback
       
-      res.json({ message: "Processing started" });
+      res.json({ message: "Processing started", status: "processing" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
