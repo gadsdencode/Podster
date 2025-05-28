@@ -1,0 +1,106 @@
+Create a complete Vite/React/TypeScript/Python/FastAPI/Tailwind CSS application, structured as follows, emphasizing a modern, sleek aesthetic with smooth animations and a hip, contemporary feel:
+
+**EXTREME EMPHASIS:** The AI coder **MUST, WITHOUT EXCEPTION, CODE THE FULL BACKEND SERVER WITH ALL ROUTES**. The YouTube transcript extraction functionality **MUST INCLUDE ALL THE FOLLOWING OPTIONS, FULLY IMPLEMENTED:**
+
+### Transcript Extraction Methods
+
+* **📝 Caption-Based**
+
+  * Fast API extraction
+  * May be blocked
+
+* **🌐 Web Scraping**
+
+  * Bypasses all blocks
+  * Always works
+  * Most reliable
+
+* **🎤 Audio-Based**
+
+  * Speech recognition
+  * No captions needed
+  * Takes 2-5 minutes
+
+**Frontend must allow users to clearly select extraction method:**
+
+* Caption-Based (Fast)
+* Web Scraping (Bypasses Blocks)
+* Audio-Based (No Captions Needed)
+
+---
+
+### 1. Project Architecture
+
+The application must have a clear **client-server architecture**:
+
+* **Frontend:** Built with **Vite**, **React**, **TypeScript**, and **Tailwind CSS**.
+* **Backend:** Built using **FastAPI** with Python, providing a RESTful API.
+
+### 2. Directory Structure
+
+```
+/ (Root)
+├── .gitignore
+├── pyproject.toml
+├── frontend/
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   └── src/
+│       ├── components/
+│       ├── pages/ (AddEpisode, Browse, Search, Admin)
+│       ├── api/
+│       ├── hooks/
+│       ├── store/ (or context/)
+│       ├── styles/
+│       ├── types/
+│       ├── App.tsx
+│       └── main.tsx
+└── backend/
+    ├── main.py
+    ├── .env
+    ├── core/ (database.py, youtube_handler.py, transcript_processor.py, caption_scraper.py)
+    ├── routers/ (episodes.py, search.py, admin.py)
+    ├── models/
+    └── dependencies.py
+```
+
+### 3. Frontend Requirements (React/TypeScript/Tailwind CSS)
+
+* **Components**: Design modern, visually appealing, reusable components with sleek styling, subtle shadows, rounded corners, and interactive hover effects.
+* **Routing**: Implement smooth page transitions and animations using libraries like `Framer Motion` or `react-spring`.
+* **API Interaction**: Use `fetch` or `axios`, optionally combined with React Query for efficient and dynamic data fetching.
+* **State Management**: Utilize React hooks, Context API, or Redux Toolkit for robust and responsive state handling.
+* **Transcript Highlighting**: Implement sophisticated search highlighting logic in TypeScript with smooth animations and intuitive visual cues using Tailwind.
+* **Form Handling**: Provide dynamic form experiences with validation animations and interactive feedback.
+
+### 4. Backend Requirements (Python/FastAPI)
+
+* **Endpoints**:
+
+  * `POST /api/episodes`: Process single episodes.
+  * `POST /api/batch-process`: Batch episode processing.
+  * `GET /api/episodes`: Fetch all episodes.
+  * `GET /api/episodes/{video_id}`: Fetch single episode.
+  * `DELETE /api/episodes/{id}`: Delete episode.
+  * `POST /api/search`: Perform searches.
+  * `PUT /api/episodes/{id}/transcript`: Update transcripts.
+  * `POST /api/enrich`: Generate summaries/topics.
+  * `GET /api/stats`: Database statistics.
+  * `GET /api/export/{format}`: Export data.
+  * `POST /api/auth/login`: Admin login.
+  * `POST /api/admin/users`: Manage admin users.
+  * `POST /api/admin/change_password`: Password management.
+* **Authentication**: Implement secure, user-friendly token-based authentication.
+* **Long Processes**: Use polling or Server-Sent Events (SSE) for providing dynamic, real-time status updates.
+* **Data Validation**: Use Pydantic for seamless data serialization/validation.
+* **Error Handling**: Offer clear, friendly error messages with HTTP status codes.
+
+### 5. Styling and UI (Tailwind CSS)
+
+* Utilize Tailwind utility classes extensively for quick, consistent, and responsive design.
+* Incorporate modern UI trends like glassmorphism, micro-animations, and interactive feedback to elevate the user experience.
+* Customize Tailwind configuration to establish a cohesive, appealing theme throughout.
+
+Ensure the application replicates the functionality and UX of the current Streamlit app while significantly enhancing the UI/UX with contemporary design principles, animations, and interactivity.
