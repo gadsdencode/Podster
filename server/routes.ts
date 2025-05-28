@@ -37,18 +37,16 @@ const extractTranscript = async (videoId: string, method: string) => {
   console.log(`Extracting real transcript for video ${videoId} using ${method} method`);
   
   try {
-    if (method === "caption" || method === "scraping") {
-      // Use the authentic YouTube transcript API
+    if (method === "caption") {
+      // Caption-based method: Use YouTube Transcript API
       const { spawn } = require('child_process');
       
       return new Promise<string>((resolve, reject) => {
         const pythonCode = `
 import os
 import sys
-import json
 os.chdir('.pythonlibs')
 
-# Try YouTube Transcript API first
 try:
     from youtube_transcript_api import YouTubeTranscriptApi
     transcript_list = YouTubeTranscriptApi.get_transcript('${videoId}', languages=['en', 'en-US', 'en-GB'])
@@ -58,30 +56,66 @@ try:
     result = full_transcript.strip()
     if len(result) > 0:
         print(result)
-        sys.exit(0)
-except Exception as api_error:
-    print(f"API failed: {api_error}", file=sys.stderr)
+    else:
+        print("ERROR: Empty transcript", file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"ERROR: {str(e)}", file=sys.stderr)
+    sys.exit(1)
+`;
+
+        const python = spawn('python3', ['-c', pythonCode]);
+        let output = '';
+        let error = '';
+
+        python.stdout.on('data', (data: any) => {
+          output += data.toString();
+        });
+
+        python.stderr.on('data', (data: any) => {
+          error += data.toString();
+        });
+
+        python.on('close', (code: any) => {
+          if (code === 0 && output.trim()) {
+            resolve(output.trim());
+          } else {
+            reject(new Error(error || 'Caption extraction failed'));
+          }
+        });
+      });
+    }
     
-    # Fallback to web scraping
-    try:
-        sys.path.append('../server')
-        from caption_scraper import CaptionScraper
-        
-        scraper = CaptionScraper()
-        result = scraper.extract_captions_from_page('${videoId}')
-        
-        if result and result.get('transcript'):
-            transcript = result['transcript']
-            if len(transcript.strip()) > 50:
-                print(transcript)
-                sys.exit(0)
-        
-        print("ERROR: No transcript found using any method", file=sys.stderr)
+    if (method === "scraping") {
+      // Web scraping method: Use caption scraper as primary method
+      const { spawn } = require('child_process');
+      
+      return new Promise<string>((resolve, reject) => {
+        const pythonCode = `
+import os
+import sys
+sys.path.append('server')
+
+try:
+    from caption_scraper import CaptionScraper
+    
+    scraper = CaptionScraper()
+    result = scraper.extract_captions_from_page('${videoId}')
+    
+    if result and result.get('transcript'):
+        transcript = result['transcript']
+        if len(transcript.strip()) > 50:
+            print(transcript)
+        else:
+            print("ERROR: Transcript too short", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("ERROR: No transcript found via web scraping", file=sys.stderr)
         sys.exit(1)
         
-    except Exception as scrape_error:
-        print(f"ERROR: Both API and scraping failed - {scrape_error}", file=sys.stderr)
-        sys.exit(1)
+except Exception as e:
+    print(f"ERROR: Web scraping failed - {str(e)}", file=sys.stderr)
+    sys.exit(1)
 `;
 
         const python = spawn('python3', ['-c', pythonCode]);
@@ -89,23 +123,23 @@ except Exception as api_error:
         let output = '';
         let error = '';
 
-        python.stdout.on('data', (data) => {
+        python.stdout.on('data', (data: any) => {
           output += data.toString();
         });
 
-        python.stderr.on('data', (data) => {
+        python.stderr.on('data', (data: any) => {
           error += data.toString();
         });
 
-        python.on('close', (code) => {
-          if (code === 0 && output.trim() && !output.includes('ERROR:')) {
+        python.on('close', (code: any) => {
+          if (code === 0 && output.trim()) {
             const transcript = output.trim();
-            console.log(`Successfully extracted ${transcript.length} characters of real transcript`);
+            console.log(`Successfully extracted ${transcript.length} characters via web scraping`);
             resolve(transcript);
           } else {
-            const errorMsg = error.includes('ERROR:') ? error.replace('ERROR:', '').trim() : 'Failed to extract real transcript';
-            console.error(`Transcript extraction failed: ${errorMsg}`);
-            reject(new Error(`Real transcript extraction failed: ${errorMsg}`));
+            const errorMsg = error.includes('ERROR:') ? error.replace('ERROR:', '').trim() : 'Web scraping failed';
+            console.error(`Web scraping failed: ${errorMsg}`);
+            reject(new Error(`Web scraping extraction failed: ${errorMsg}`));
           }
         });
       });
