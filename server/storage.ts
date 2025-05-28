@@ -87,6 +87,7 @@ export class MemStorage implements IStorage {
     const user: User = {
       ...insertUser,
       id,
+      role: insertUser.role || "user",
       createdAt: new Date()
     };
     this.users.set(id, user);
@@ -132,7 +133,14 @@ export class MemStorage implements IStorage {
       summary: null,
       topics: [],
       wordCount: null,
-      errorMessage: null
+      errorMessage: null,
+      // These will be populated by the video info extraction
+      videoId: "",
+      title: "",
+      description: null,
+      channel: null,
+      duration: null,
+      thumbnailUrl: null
     };
     this.episodes.set(id, episode);
     return episode;
@@ -211,6 +219,8 @@ export class MemStorage implements IStorage {
     const searchQuery: SearchQuery = {
       ...insertSearchQuery,
       id,
+      userId: insertSearchQuery.userId || null,
+      resultCount: insertSearchQuery.resultCount || 0,
       createdAt: new Date()
     };
     this.searchQueries.set(id, searchQuery);
@@ -244,7 +254,7 @@ export class MemStorage implements IStorage {
 
   async getQueueItems(): Promise<ProcessingQueueItem[]> {
     return Array.from(this.processingQueue.values())
-      .sort((a, b) => b.priority - a.priority || a.createdAt.getTime() - b.createdAt.getTime());
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0) || a.createdAt.getTime() - b.createdAt.getTime());
   }
 
   async updateQueueItem(id: number, updates: Partial<ProcessingQueueItem>): Promise<ProcessingQueueItem | undefined> {

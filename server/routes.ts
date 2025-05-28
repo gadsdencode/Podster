@@ -168,7 +168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const wordCount = transcript.split(/\s+/).length;
           
           let summary = null;
-          let topics = [];
+          let topics: string[] = [];
           
           // Generate summary and topics if requested
           if (req.body.generateSummary) {
