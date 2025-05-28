@@ -274,20 +274,25 @@ Return JSON format:
       if (index === -1) break;
       
       // Check if this is a whole word match
-      const before = index > 0 ? lowerText[index - 1] : ' ';
-      const after = index + lowerKeyword.length < lowerText.length 
+      const prevChar = index > 0 ? lowerText[index - 1] : ' ';
+      const nextChar = index + lowerKeyword.length < lowerText.length 
         ? lowerText[index + lowerKeyword.length] 
         : ' ';
       
-      const isWordBoundary = /\W/.test(before) && /\W/.test(after);
+      // Strict word boundary check - only non-alphanumeric characters are boundaries
+      const isPrevBoundary = /[^a-z0-9]/.test(prevChar);
+      const isNextBoundary = /[^a-z0-9]/.test(nextChar);
       
-      if (isWordBoundary) {
+      if (isPrevBoundary && isNextBoundary) {
+        // Ensure we're using the exact length from the original text
+        const exactKeyword = text.substring(index, index + keyword.length);
         positions.push({
           start: index,
-          end: index + keyword.length
+          end: index + exactKeyword.length
         });
       }
       
+      // Move past this occurrence to find the next one
       startIndex = index + 1;
     }
     

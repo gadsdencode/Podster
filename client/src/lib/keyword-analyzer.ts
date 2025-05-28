@@ -152,21 +152,26 @@ function findAllPositions(text: string, keyword: string): Array<{start: number, 
     const index = lowerText.indexOf(lowerKeyword, startIndex);
     if (index === -1) break;
     
-    // Check if this is a whole word match
-    const before = index > 0 ? lowerText[index - 1] : ' ';
-    const after = index + lowerKeyword.length < lowerText.length 
+    // Check if this is a whole word match by examining the characters before and after
+    const prevChar = index > 0 ? lowerText[index - 1] : ' ';
+    const nextChar = index + lowerKeyword.length < lowerText.length 
       ? lowerText[index + lowerKeyword.length] 
       : ' ';
     
-    const isWordBoundary = /\W/.test(before) && /\W/.test(after);
+    // Word boundary is any non-alphanumeric character
+    const isPrevBoundary = /[^a-z0-9]/.test(prevChar);
+    const isNextBoundary = /[^a-z0-9]/.test(nextChar);
     
-    if (isWordBoundary) {
+    // Only add if both boundaries are satisfied
+    if (isPrevBoundary && isNextBoundary) {
+      // Use the exact start and end indices for the keyword
       positions.push({
         start: index,
         end: index + keyword.length
       });
     }
     
+    // Move past this occurrence to find the next one
     startIndex = index + 1;
   }
   
@@ -176,7 +181,7 @@ function findAllPositions(text: string, keyword: string): Array<{start: number, 
 export function highlightText(text: string, keywords: KeywordHighlight[]): string {
   if (!keywords || keywords.length === 0) return text;
   
-  // Sort keywords by position (end to start) to avoid position shifting
+  // Collect all positions where highlights should be applied
   const allPositions: Array<{
     start: number;
     end: number;
@@ -185,29 +190,68 @@ export function highlightText(text: string, keywords: KeywordHighlight[]): strin
   
   for (const keyword of keywords) {
     for (const position of keyword.positions) {
-      allPositions.push({
-        ...position,
-        keyword
-      });
+      // Double-check that the position points to the actual keyword
+      const substr = text.substring(position.start, position.end);
+      if (substr.toLowerCase() === keyword.keyword.toLowerCase()) {
+        allPositions.push({
+          ...position,
+          keyword
+        });
+      } else {
+        console.warn(`Position mismatch: expected "${keyword.keyword}" but found "${substr}"`);
+      }
     }
   }
   
+  // If no valid positions, return original text
+  if (allPositions.length === 0) return text;
+  
+  // Sort positions from end to start to prevent index shifts when replacing
   allPositions.sort((a, b) => b.start - a.start);
   
+  // Apply highlights from end to start (to avoid position shifts)
   let highlightedText = text;
   
   for (const position of allPositions) {
+    // Extract the exact text we want to highlight
     const beforeText = highlightedText.substring(0, position.start);
     const keywordText = highlightedText.substring(position.start, position.end);
     const afterText = highlightedText.substring(position.end);
     
+    // Get the appropriate CSS class for this category
     const colorClass = getCategoryColor(position.keyword.category);
-    const highlightedKeyword = `<span class="keyword-highlight ${colorClass}" title="${position.keyword.category} (${Math.round(position.keyword.confidence * 100)}% confidence)">${keywordText}</span>`;
     
+    // Format the confidence for display
+    const confidenceValue = Math.round(position.keyword.confidence * 100);
+    
+    // Properly escape the title text
+    const safeCategory = escapeHtml(position.keyword.category);
+    const titleText = `${safeCategory} (${confidenceValue}% confidence)`;
+    
+    // Build the HTML with proper escaping
+    const highlightedKeyword = 
+      '<span ' + 
+      'class="keyword-highlight ' + escapeHtml(colorClass) + '" ' + 
+      'title="' + escapeHtml(titleText) + '"' +
+      '>' + 
+      keywordText + 
+      '</span>';
+    
+    // Replace just this occurrence
     highlightedText = beforeText + highlightedKeyword + afterText;
   }
   
   return highlightedText;
+}
+
+// Helper function to escape HTML special characters
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function getCategoryColor(category: string): string {

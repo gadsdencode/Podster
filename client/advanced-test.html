@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Keyword Highlight Test</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    .keyword-highlight {
+      padding: 2px 4px;
+      border-radius: 4px;
+      font-weight: 500;
+      cursor: help;
+      transition: all 0.2s ease;
+    }
+    .keyword-highlight:hover {
+      transform: scale(1.05);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .bg-yellow-200 {
+      background-color: #fef9c3;
+      color: #713f12;
+    }
+    .bg-blue-200 {
+      background-color: #bfdbfe;
+      color: #1e3a8a;
+    }
+    .bg-green-200 {
+      background-color: #bbf7d0;
+      color: #14532d;
+    }
+    .bg-purple-200 {
+      background-color: #e9d5ff;
+      color: #581c87;
+    }
+    .bg-red-200 {
+      background-color: #fecaca;
+      color: #7f1d1d;
+    }
+    .transcript {
+      white-space: pre-wrap;
+      background-color: #f9fafb;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+    }
+    .test-case {
+      margin-bottom: 30px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 20px;
+    }
+    h2 {
+      font-size: 1.2rem;
+      margin-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Advanced Keyword Highlighting Test</h1>
+  
+  <div class="test-case">
+    <h2>Test Case 1: Single Keyword</h2>
+    <div class="transcript">
+      This is a sample text with <span class="keyword-highlight bg-purple-200" title="concept (95% confidence)">decaf coffee</span> as a keyword.
+    </div>
+  </div>
+  
+  <div class="test-case">
+    <h2>Test Case 2: Multiple Keywords with Different Categories</h2>
+    <div class="transcript">
+      <span class="keyword-highlight bg-green-200" title="name (90% confidence)">John Smith</span> wrote about <span class="keyword-highlight bg-purple-200" title="concept (85% confidence)">artificial intelligence</span> and its impact on <span class="keyword-highlight bg-red-200" title="action (75% confidence)">coding</span>. He used many <span class="keyword-highlight bg-blue-200" title="technical (88% confidence)">neural networks</span> in his research.
+    </div>
+  </div>
+  
+  <div class="test-case">
+    <h2>Test Case 3: Overlapping Keywords</h2>
+    <div class="transcript">
+      The phrase <span class="keyword-highlight bg-purple-200" title="concept (80% confidence)">machine learning algorithms</span> contains the word <span class="keyword-highlight bg-blue-200" title="technical (90% confidence)">algorithms</span> which is a technical term.
+    </div>
+  </div>
+  
+  <div class="test-case">
+    <h2>Test Case 4: Long Transcript Paragraph</h2>
+    <div class="transcript">
+      Coffee and <span class="keyword-highlight bg-purple-200" title="concept (95% confidence)">decaf coffee</span> can both affect how you feel. <span class="keyword-highlight bg-green-200" title="name (90% confidence)">Pavlov</span> was training his dog and that relates to <span class="keyword-highlight bg-purple-200" title="concept (87% confidence)">habituation</span>. The effect of <span class="keyword-highlight bg-red-200" title="action (85% confidence)">drinking</span> coffee is influenced by many factors.
+    </div>
+  </div>
+  
+  <script>
+    // This is just a static test page, no JavaScript needed
+  </script>
+</body>
+</html> 
