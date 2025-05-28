@@ -2,22 +2,64 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye } from "lucide-react";
+import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye, RefreshCw } from "lucide-react";
 import { useSystemStats } from "@/hooks/use-episodes";
 import { useRecentEpisodes } from "@/hooks/use-episodes";
 import TranscriptViewer from "@/components/episodes/transcript-viewer";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Episode } from "@shared/schema";
+import { useQueryClient } from "@tanstack/react-query";
+import { StatsCardGrid } from "@/components/ui/stats-card-grid";
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
   const { data: stats, isLoading: statsLoading } = useSystemStats();
-  const { data: recentEpisodes, isLoading: episodesLoading } = useRecentEpisodes();
+  const { data: recentEpisodes, isLoading: episodesLoading, refetch: refetchEpisodes } = useRecentEpisodes();
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Debug: Log stats when they change
+  useEffect(() => {
+    if (stats) {
+      console.log('Dashboard received stats:', stats);
+    }
+  }, [stats]);
+  
+  // Set up auto-refresh every 5 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      refreshData(false);
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, []);
 
   const handleViewTranscript = (episode: Episode) => {
     setSelectedEpisode(episode);
     setIsTranscriptOpen(true);
+  };
+  
+  const refreshData = async (showRefreshState = true) => {
+    if (showRefreshState) {
+      setRefreshing(true);
+    }
+    
+    try {
+      // Invalidate and refetch all necessary queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/episodes"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/episodes", "recent"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/stats"] }),
+        refetchEpisodes()
+      ]);
+    } catch (error) {
+      console.error("Failed to refresh data:", error);
+    }
+    
+    if (showRefreshState) {
+      setTimeout(() => setRefreshing(false), 500);
+    }
   };
 
   return (
@@ -29,75 +71,36 @@ export default function Dashboard() {
         className="text-center space-y-6"
       >
         <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
-          Extract YouTube Transcripts
+          Podcast Transcript AI
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Advanced AI-powered transcript extraction with multiple methods. Fast, reliable, and always works.
+          Created by <a href="https://x.com/Pragmanic0" className="text-primary">Gadsdencode</a>
         </p>
-        <Link href="/add-episode">
-          <Button size="lg" className="bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90">
-            <Plus className="mr-2 h-5 w-5" />
-            Start Extracting
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          All credit and gratitude to Scott Adams for the podcast content and assembling the #CWSA community (IYKYK).
+        </p>
+        <div className="flex items-center justify-center gap-4">
+          <Link href="/add-episode">
+            <Button size="lg" className="bg-gradient-to-r from-primary to-purple-500 hover:from-primary/90 hover:to-purple-500/90">
+              <Plus className="mr-2 h-5 w-5" />
+              Start Extracting
+            </Button>
+          </Link>
+          <Button 
+            size="icon" 
+            variant="outline" 
+            onClick={() => refreshData()}
+            disabled={refreshing}
+            title="Refresh data"
+            className={refreshing ? "animate-spin" : ""}
+          >
+            <RefreshCw className="h-5 w-5" />
           </Button>
-        </Link>
+        </div>
       </motion.section>
 
       {/* Stats Cards */}
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="glassmorphism border-white/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Episodes</CardTitle>
-              <Play className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-primary">
-                {statsLoading ? "..." : stats?.totalEpisodes || 0}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="glassmorphism border-white/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Success Rate</CardTitle>
-              <CheckCircle className="h-4 w-4 text-emerald-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-emerald-400">
-                {statsLoading ? "..." : `${stats?.successRate || 0}%`}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="glassmorphism border-white/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Avg Processing Time</CardTitle>
-              <Clock className="h-4 w-4 text-purple-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-400">
-                {statsLoading ? "..." : stats?.averageProcessingTime || "0min"}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="glassmorphism border-white/10">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Storage Used</CardTitle>
-              <Database className="h-4 w-4 text-amber-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-400">
-                {statsLoading ? "..." : stats?.totalStorage || "0GB"}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </motion.section>
+      <StatsCardGrid stats={stats} statsLoading={statsLoading} />
 
       {/* Recent Episodes */}
       <motion.section

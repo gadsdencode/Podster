@@ -2,8 +2,15 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    try {
+      // Try to parse the error response as JSON
+      const errorData = await res.json();
+      throw new Error(errorData.message || errorData.error || `${res.status}: ${res.statusText}`);
+    } catch (e) {
+      // If JSON parsing fails, fall back to status text
+      const text = await res.text().catch(() => res.statusText);
+      throw new Error(`${res.status}: ${text || res.statusText}`);
+    }
   }
 }
 
@@ -12,15 +19,22 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include",
+    });
 
-  await throwIfResNotOk(res);
-  return res;
+    // Don't throw here - just return the response
+    // Let the caller decide how to handle errors
+    return res;
+  } catch (error) {
+    // This will only catch network errors
+    console.error("Network error:", error);
+    throw new Error("Failed to connect to server. Please check your internet connection.");
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -46,9 +60,9 @@ export const queryClient = new QueryClient({
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      refetchOnWindowFocus: true,
+      staleTime: 30000,
+      retry: 1,
     },
     mutations: {
       retry: false,

@@ -9,7 +9,9 @@ import AddEpisode from "@/pages/add-episode";
 import Episodes from "@/pages/episodes";
 import Search from "@/pages/search";
 import Admin from "@/pages/admin";
+import AdminLogin from "@/pages/admin-login";
 import NotFound from "@/pages/not-found";
+import { BrowserRouter } from "react-router-dom";
 
 function Router() {
   return (
@@ -20,6 +22,7 @@ function Router() {
         <Route path="/episodes" component={Episodes} />
         <Route path="/search" component={Search} />
         <Route path="/admin" component={Admin} />
+        <Route path="/admin/login" component={AdminLogin} />
         <Route component={NotFound} />
       </Switch>
     </MainLayout>
@@ -29,10 +32,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <BrowserRouter>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </BrowserRouter>
     </QueryClientProvider>
   );
 }

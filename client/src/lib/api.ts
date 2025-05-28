@@ -31,8 +31,30 @@ export const episodesApi = {
     return response.json();
   },
 
-  delete: async (id: number): Promise<void> => {
-    await apiRequest("DELETE", `/api/episodes/${id}`);
+  delete: async (id: number): Promise<{ message: string }> => {
+    try {
+      const response = await apiRequest("DELETE", `/api/episodes/${id}`);
+      
+      // Only try to parse JSON if status is OK
+      if (response.ok) {
+        return response.json();
+      }
+      
+      // If we get here, something went wrong but the error might not be in JSON format
+      try {
+        const error = await response.json();
+        throw new Error(error.message || error.error || 'Failed to delete episode');
+      } catch (parseError) {
+        // If JSON parsing fails, use status text
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+    } catch (error: any) {
+      // Re-throw the error for the mutation to handle
+      if (error.message) {
+        throw error;
+      }
+      throw new Error('Failed to connect to the server');
+    }
   },
 
   updateTranscript: async (id: number, transcript: string): Promise<Episode> => {
@@ -115,5 +137,38 @@ export const exportApi = {
   exportData: async (format: 'json' | 'csv'): Promise<Blob> => {
     const response = await apiRequest("GET", `/api/export/${format}`);
     return response.blob();
+  }
+};
+
+export const adminApi = {
+  login: async (username: string, password: string): Promise<{ success: boolean }> => {
+    const response = await apiRequest("POST", "/api/admin/login", { username, password });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || "Login failed");
+    }
+    
+    return response.json();
+  },
+  
+  logout: async (): Promise<{ success: boolean }> => {
+    const response = await apiRequest("POST", "/api/admin/logout");
+    return response.json();
+  },
+  
+  checkAuth: async (): Promise<{ isAuthenticated: boolean }> => {
+    try {
+      const response = await apiRequest("GET", "/api/admin/check-auth");
+      
+      if (response.ok) {
+        return response.json();
+      } else {
+        return { isAuthenticated: false };
+      }
+    } catch (error) {
+      console.error("Auth check error:", error);
+      return { isAuthenticated: false };
+    }
   }
 };

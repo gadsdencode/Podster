@@ -181,67 +181,83 @@ function findAllPositions(text: string, keyword: string): Array<{start: number, 
 export function highlightText(text: string, keywords: KeywordHighlight[]): string {
   if (!keywords || keywords.length === 0) return text;
   
-  // Collect all positions where highlights should be applied
-  const allPositions: Array<{
+  // Create an array of all positions with their categories
+  interface HighlightPosition {
     start: number;
     end: number;
-    keyword: KeywordHighlight;
-  }> = [];
+    category: string;
+    keyword: string;
+    confidence: number;
+  }
   
+  // Collect all positions
+  const positions: HighlightPosition[] = [];
   for (const keyword of keywords) {
     for (const position of keyword.positions) {
-      // Double-check that the position points to the actual keyword
-      const substr = text.substring(position.start, position.end);
-      if (substr.toLowerCase() === keyword.keyword.toLowerCase()) {
-        allPositions.push({
-          ...position,
-          keyword
+      // Verify the position
+      const actualText = text.substring(position.start, position.end);
+      if (actualText.toLowerCase() === keyword.keyword.toLowerCase()) {
+        positions.push({
+          start: position.start,
+          end: position.end,
+          category: keyword.category,
+          keyword: keyword.keyword,
+          confidence: keyword.confidence
         });
-      } else {
-        console.warn(`Position mismatch: expected "${keyword.keyword}" but found "${substr}"`);
       }
     }
   }
   
   // If no valid positions, return original text
-  if (allPositions.length === 0) return text;
+  if (positions.length === 0) return text;
   
-  // Sort positions from end to start to prevent index shifts when replacing
-  allPositions.sort((a, b) => b.start - a.start);
+  // Sort positions by start index
+  positions.sort((a, b) => a.start - b.start);
   
-  // Apply highlights from end to start (to avoid position shifts)
-  let highlightedText = text;
-  
-  for (const position of allPositions) {
-    // Extract the exact text we want to highlight
-    const beforeText = highlightedText.substring(0, position.start);
-    const keywordText = highlightedText.substring(position.start, position.end);
-    const afterText = highlightedText.substring(position.end);
+  // Handle overlapping highlights - resolve conflicts
+  const resolvedPositions: HighlightPosition[] = [];
+  for (const pos of positions) {
+    // Check if this position overlaps with any previously added position
+    let overlaps = false;
+    for (const existingPos of resolvedPositions) {
+      // Check for overlap
+      if (pos.start < existingPos.end && pos.end > existingPos.start) {
+        overlaps = true;
+        break;
+      }
+    }
     
-    // Get the appropriate CSS class for this category
-    const colorClass = getCategoryColor(position.keyword.category);
-    
-    // Format the confidence for display
-    const confidenceValue = Math.round(position.keyword.confidence * 100);
-    
-    // Properly escape the title text
-    const safeCategory = escapeHtml(position.keyword.category);
-    const titleText = `${safeCategory} (${confidenceValue}% confidence)`;
-    
-    // Build the HTML with proper escaping
-    const highlightedKeyword = 
-      '<span ' + 
-      'class="keyword-highlight ' + escapeHtml(colorClass) + '" ' + 
-      'title="' + escapeHtml(titleText) + '"' +
-      '>' + 
-      keywordText + 
-      '</span>';
-    
-    // Replace just this occurrence
-    highlightedText = beforeText + highlightedKeyword + afterText;
+    // Only add non-overlapping positions
+    if (!overlaps) {
+      resolvedPositions.push(pos);
+    }
   }
   
-  return highlightedText;
+  // Build the highlighted text
+  let result = '';
+  let lastIndex = 0;
+  
+  for (const pos of resolvedPositions) {
+    // Add text before this highlight
+    result += text.substring(lastIndex, pos.start);
+    
+    // Add the highlighted portion
+    const colorClass = getCategoryColor(pos.category);
+    const confidenceValue = Math.round(pos.confidence * 100);
+    const titleText = `${escapeHtml(pos.category)} (${confidenceValue}% confidence)`;
+    
+    result += `<span class="keyword-highlight ${escapeHtml(colorClass)}" title="${escapeHtml(titleText)}">`;
+    result += text.substring(pos.start, pos.end);
+    result += '</span>';
+    
+    // Update lastIndex
+    lastIndex = pos.end;
+  }
+  
+  // Add any remaining text
+  result += text.substring(lastIndex);
+  
+  return result;
 }
 
 // Helper function to escape HTML special characters

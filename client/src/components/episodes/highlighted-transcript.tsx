@@ -76,9 +76,9 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
   const categoryColors = {
     important: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700',
     technical: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-700',
-    names: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 border-green-300 dark:border-green-700',
-    concepts: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700',
-    actions: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700'
+    name: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 border-green-300 dark:border-green-700',
+    concept: 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700',
+    action: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700'
   };
 
   const categoryLabels = {
@@ -191,7 +191,8 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
       {/* Transcript */}
       <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
         <div 
-          className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed font-mono text-sm bg-gray-50 dark:bg-gray-900/50 p-4 rounded border"
+          className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed font-mono text-sm bg-gray-50 dark:bg-gray-900/50 p-4 rounded border overflow-auto"
+          style={{ lineHeight: '1.7', wordBreak: 'break-word' }}
           dangerouslySetInnerHTML={{ 
             __html: getHighlightedText()
           }}
@@ -226,10 +227,16 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
           font-weight: 500;
           cursor: help;
           transition: all 0.2s ease;
+          display: inline;
+          margin: 0 1px;
+          white-space: pre-wrap;
+          line-height: 1.7;
         }
         .keyword-highlight:hover {
           transform: scale(1.05);
           box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          position: relative;
+          z-index: 5;
         }
         `
       }} />
@@ -250,22 +257,22 @@ function getCategoryLabel(category: string): string {
 
 function getCategoryColorClass(category: string): string {
   switch (category) {
-    case 'important': return 'bg-yellow-500 hover:bg-yellow-600';
-    case 'technical': return 'bg-blue-500 hover:bg-blue-600';
-    case 'name': return 'bg-green-500 hover:bg-green-600';
-    case 'concept': return 'bg-purple-500 hover:bg-purple-600';
-    case 'action': return 'bg-red-500 hover:bg-red-600';
-    default: return 'bg-gray-500 hover:bg-gray-600';
+    case 'important': return 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700';
+    case 'technical': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-700';
+    case 'name': return 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 border-green-300 dark:border-green-700';
+    case 'concept': return 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 border-purple-300 dark:border-purple-700';
+    case 'action': return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700';
+    default: return 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700';
   }
 }
 
 function getCategoryBgClass(category: string): string {
   switch (category) {
-    case 'important': return 'bg-yellow-500';
-    case 'technical': return 'bg-blue-500';
-    case 'name': return 'bg-green-500';
-    case 'concept': return 'bg-purple-500';
-    case 'action': return 'bg-red-500';
-    default: return 'bg-gray-500';
+    case 'important': return 'bg-yellow-200';
+    case 'technical': return 'bg-blue-200';
+    case 'name': return 'bg-green-200';
+    case 'concept': return 'bg-purple-200';
+    case 'action': return 'bg-red-200';
+    default: return 'bg-gray-200';
   }
 }

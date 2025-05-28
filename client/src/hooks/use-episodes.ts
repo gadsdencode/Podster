@@ -17,6 +17,9 @@ export function useRecentEpisodes() {
       const episodes = await episodesApi.getAll();
       return episodes.slice(0, 6); // Return only the 6 most recent
     },
+    refetchInterval: 2000, // Refresh every 2 seconds for more responsive UI
+    staleTime: 0, // Always consider data stale
+    refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
 
@@ -44,11 +47,28 @@ export function useDeleteEpisode() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (id: number) => episodesApi.delete(id),
+    // Use a more specific mutation key to avoid conflicts
+    mutationKey: ['deleteEpisode'],
+    
+    mutationFn: async (id: number) => {
+      try {
+        const response = await episodesApi.delete(id);
+        return response;
+      } catch (error: any) {
+        // Extract the error message from the API response if available
+        const errorData = error.response?.data;
+        throw new Error(errorData?.message || errorData?.error || 'Failed to delete episode');
+      }
+    },
+    
     onSuccess: () => {
+      // Only invalidate queries on success
       queryClient.invalidateQueries({ queryKey: ["/api/episodes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
     },
+    
+    // Only retry once to avoid multiple error notifications
+    retry: 0
   });
 }
 
@@ -93,8 +113,15 @@ export function useProcessEpisode() {
     mutationFn: ({ id, options }: { id: number; options?: { generateSummary?: boolean; extractTopics?: boolean } }) => 
       episodesApi.process(id, options),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/episodes", variables.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/processing-status", variables.id] });
+      // Invalidate all necessary queries to ensure UI updates
+      queryClient.invalidateQueries({ queryKey: ["/api/episodes"] }); // Invalidate all episodes
+      queryClient.invalidateQueries({ queryKey: ["/api/episodes", variables.id] }); // Invalidate specific episode
+      queryClient.invalidateQueries({ queryKey: ["/api/episodes", "recent"] }); // Invalidate recent episodes
+      queryClient.invalidateQueries({ queryKey: ["/api/processing-status", variables.id] }); // Invalidate processing status
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] }); // Invalidate stats
+      
+      // Force a refetch of recent episodes immediately
+      queryClient.refetchQueries({ queryKey: ["/api/episodes", "recent"] });
     },
   });
 }
@@ -103,7 +130,9 @@ export function useSystemStats() {
   return useQuery({
     queryKey: ["/api/stats"],
     queryFn: statsApi.getSystemStats,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 5000, // Refresh more frequently to catch updates
+    staleTime: 0, // Always consider data stale
+    refetchOnMount: 'always', // Always refetch when component mounts
   });
 }
 

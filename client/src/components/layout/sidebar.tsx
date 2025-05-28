@@ -18,7 +18,6 @@ const navigation = [
   { name: "Add Episode", href: "/add-episode", icon: Plus },
   { name: "Episodes", href: "/episodes", icon: Video },
   { name: "Search", href: "/search", icon: Search },
-  { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Admin", href: "/admin", icon: Settings },
 ];
 
@@ -90,14 +89,6 @@ export default function Sidebar() {
               </div>
             </div>
           </div>
-          
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-slate-300 hover:bg-white/10"
-          >
-            <Settings className="mr-3 h-5 w-5" />
-            Settings
-          </Button>
         </motion.div>
       </div>
     </div>

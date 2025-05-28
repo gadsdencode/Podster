@@ -11,6 +11,13 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const admin = pgTable("admin", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  password: text("password").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const episodes = pgTable("episodes", {
   id: serial("id").primaryKey(),
   videoId: text("video_id").notNull().unique(),
@@ -91,6 +98,11 @@ export const insertSearchQuerySchema = createInsertSchema(searchQueries).omit({
   createdAt: true,
 });
 
+export const adminLoginSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -102,6 +114,9 @@ export type SearchQuery = typeof searchQueries.$inferSelect;
 export type InsertSearchQuery = z.infer<typeof insertSearchQuerySchema>;
 
 export type ProcessingQueueItem = typeof processingQueue.$inferSelect;
+
+export type Admin = typeof admin.$inferSelect;
+export type AdminLogin = z.infer<typeof adminLoginSchema>;
 
 // API Response types
 export type EpisodeWithProgress = Episode & {

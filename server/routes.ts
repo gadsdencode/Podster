@@ -295,6 +295,88 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Admin Authentication
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const { username, password } = req.body;
+      
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required" });
+      }
+      
+      const isValid = await storage.verifyAdminCredentials({ username, password });
+      
+      if (isValid) {
+        // Set admin session cookie
+        req.session.isAdmin = true;
+        return res.status(200).json({ success: true });
+      } else {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+    } catch (error: any) {
+      console.error("Admin login error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  app.post("/api/admin/logout", (req, res) => {
+    // Clear admin session
+    req.session.isAdmin = false;
+    res.status(200).json({ success: true });
+  });
+  
+  app.get("/api/admin/check-auth", (req, res) => {
+    if (req.session.isAdmin) {
+      return res.status(200).json({ isAuthenticated: true });
+    } else {
+      return res.status(401).json({ isAuthenticated: false });
+    }
+  });
+  
+  // Middleware to check admin authentication
+  const requireAdminAuth = (req: any, res: any, next: any) => {
+    if (req.session.isAdmin) {
+      next();
+    } else {
+      res.status(401).json({ message: "Unauthorized" });
+    }
+  };
+
+  // Protected admin routes
+  app.get("/api/admin/users", requireAdminAuth, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/users", requireAdminAuth, async (req, res) => {
+    try {
+      const validatedData = insertUserSchema.parse(req.body);
+      const user = await storage.createUser(validatedData);
+      res.status(201).json(user);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/admin/users/:id", requireAdminAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteUser(id);
+      
+      if (success) {
+        res.json({ message: "User deleted successfully" });
+      } else {
+        res.status(404).json({ message: "User not found" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Episode management endpoints
   app.post("/api/episodes", async (req, res) => {
     try {
@@ -419,13 +501,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/episodes/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const success = await storage.deleteEpisode(id);
-      if (!success) {
+      
+      // Check if episode exists first
+      const episode = await storage.getEpisode(id);
+      if (!episode) {
         return res.status(404).json({ message: "Episode not found" });
       }
+      
+      const success = await storage.deleteEpisode(id);
+      if (!success) {
+        return res.status(500).json({ message: "Failed to delete episode" });
+      }
+      
       res.json({ message: "Episode deleted successfully" });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      console.error("Error deleting episode:", error);
+      res.status(500).json({ 
+        message: "Error deleting episode", 
+        error: error.message || "Unknown error"
+      });
     }
   });
 
@@ -442,14 +536,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update status to processing
       await storage.updateEpisode(id, { 
         status: "processing",
-        processingStarted: new Date()
+        processingStarted: new Date(),
+        progress: 10, // Start with 10% progress
+        currentStep: "Starting transcript extraction..."
       });
       
-      // Simulate processing (in real app, this would be async)
+      // Process the episode asynchronously
       setTimeout(async () => {
         try {
+          // Update progress to show activity
+          await storage.updateEpisode(id, {
+            progress: 30,
+            currentStep: "Extracting transcript..."
+          });
+          
+          // Wait a moment to simulate processing
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
           const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
           const wordCount = transcript.split(/\s+/).length;
+          
+          // Update progress
+          await storage.updateEpisode(id, {
+            progress: 60,
+            currentStep: "Processing extracted content..."
+          });
           
           let summary = null;
           let topics: string[] = [];
@@ -462,24 +573,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             topics = await extractTopics(transcript);
           }
           
+          // Update progress
+          await storage.updateEpisode(id, {
+            progress: 90,
+            currentStep: "Finalizing..."
+          });
+          
+          // Wait a moment before final update
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Final update with completed status
           await storage.updateEpisode(id, {
             status: "completed",
             transcript,
             summary,
             topics,
             wordCount,
+            progress: 100,
+            currentStep: "Completed successfully",
             processingCompleted: new Date()
           });
+          
+          console.log(`Episode ${id} processed successfully`);
         } catch (error: any) {
+          console.error(`Error processing episode ${id}:`, error);
           await storage.updateEpisode(id, {
             status: "failed",
             errorMessage: error.message,
+            progress: 100,
+            currentStep: "Processing failed: " + error.message,
             processingCompleted: new Date()
           });
         }
-      }, 3000);
+      }, 1000); // Reduced from 3000 to 1000 for faster feedback
       
-      res.json({ message: "Processing started" });
+      res.json({ message: "Processing started", status: "processing" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -634,40 +762,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(401).json({ message: "Invalid credentials" });
       }
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/admin/users", async (req, res) => {
-    try {
-      const validatedData = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(validatedData);
-      const { password: _, ...userWithoutPassword } = user;
-      res.status(201).json(userWithoutPassword);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/admin/users", async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      const usersWithoutPasswords = users.map(({ password: _, ...user }) => user);
-      res.json(usersWithoutPasswords);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.delete("/api/admin/users/:id", async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const success = await storage.deleteUser(id);
-      if (!success) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      res.json({ message: "User deleted successfully" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

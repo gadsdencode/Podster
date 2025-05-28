@@ -6,7 +6,7 @@ import { Eye, Trash2, RotateCcw } from "lucide-react";
 import { useDeleteEpisode } from "@/hooks/use-episodes";
 import { useToast } from "@/hooks/use-toast";
 import TranscriptViewer from "./transcript-viewer";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Episode } from "@shared/schema";
 
 interface EpisodeCardProps {
@@ -18,20 +18,37 @@ export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
   const { toast } = useToast();
   const deleteEpisodeMutation = useDeleteEpisode();
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
+  const deletingRef = useRef(false);
 
   const handleDelete = async () => {
+    // Prevent duplicate delete operations
+    if (deletingRef.current || deleteEpisodeMutation.isPending) {
+      return;
+    }
+    
     try {
+      // Set deleting flag to true
+      deletingRef.current = true;
+      
+      // Attempt to delete the episode
       await deleteEpisodeMutation.mutateAsync(episode.id);
+      
+      // Only show success toast if we get here (no error thrown)
       toast({
         title: "Episode Deleted",
         description: "The episode has been successfully deleted.",
       });
     } catch (error: any) {
+      console.error("Failed to delete episode:", error);
+      // Only show error toast when there's an actual error
       toast({
-        title: "Error",
-        description: error.message || "Failed to delete episode",
+        title: "Error Deleting Episode",
+        description: error.message || "Failed to delete episode. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      // Reset deleting flag
+      deletingRef.current = false;
     }
   };
 
