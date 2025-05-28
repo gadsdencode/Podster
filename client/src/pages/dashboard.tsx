@@ -71,10 +71,13 @@ export default function Dashboard() {
         className="text-center space-y-6"
       >
         <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
-          Extract YouTube Transcripts
+          Podcast Transcript AI
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Advanced AI-powered transcript extraction with multiple methods. Fast, reliable, and always works.
+          Created by <a href="https://x.com/Pragmanic0" className="text-primary">Gadsdencode</a>
+        </p>
+        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+          All credit and gratitude to Scott Adams for the podcast content and assembling the #CWSA community (IYKYK).
         </p>
         <div className="flex items-center justify-center gap-4">
           <Link href="/add-episode">
