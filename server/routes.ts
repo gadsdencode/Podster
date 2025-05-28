@@ -34,33 +34,72 @@ const extractVideoInfo = async (url: string) => {
 };
 
 const extractTranscript = async (videoId: string, method: string) => {
-  console.log(`Attempting to extract real transcript for video ${videoId} using ${method} method`);
+  console.log(`Extracting real transcript for video ${videoId} using ${method} method`);
   
   try {
-    // For caption-based method, try to get real captions
-    if (method === "caption") {
-      // This would require YouTube API access or caption scraping
-      throw new Error("Caption extraction requires YouTube API access or specialized scraping tools");
+    if (method === "caption" || method === "scraping") {
+      // Use the authentic YouTube transcript API
+      const { spawn } = require('child_process');
+      
+      return new Promise<string>((resolve, reject) => {
+        const pythonCode = `
+import os
+import sys
+os.chdir('.pythonlibs')
+from youtube_transcript_api import YouTubeTranscriptApi
+
+try:
+    transcript_list = YouTubeTranscriptApi.get_transcript('${videoId}', languages=['en', 'en-US', 'en-GB'])
+    full_transcript = ""
+    for segment in transcript_list:
+        full_transcript += segment['text'] + " "
+    result = full_transcript.strip()
+    if len(result) > 0:
+        print(result)
+    else:
+        print("ERROR: Empty transcript", file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f"ERROR: {str(e)}", file=sys.stderr)
+    sys.exit(1)
+`;
+
+        const python = spawn('python3', ['-c', pythonCode]);
+
+        let output = '';
+        let error = '';
+
+        python.stdout.on('data', (data) => {
+          output += data.toString();
+        });
+
+        python.stderr.on('data', (data) => {
+          error += data.toString();
+        });
+
+        python.on('close', (code) => {
+          if (code === 0 && output.trim() && !output.includes('ERROR:')) {
+            const transcript = output.trim();
+            console.log(`Successfully extracted ${transcript.length} characters of real transcript`);
+            resolve(transcript);
+          } else {
+            const errorMsg = error.includes('ERROR:') ? error.replace('ERROR:', '').trim() : 'Failed to extract real transcript';
+            console.error(`Transcript extraction failed: ${errorMsg}`);
+            reject(new Error(`Real transcript extraction failed: ${errorMsg}`));
+          }
+        });
+      });
     }
     
-    // For scraping method, attempt basic transcript extraction
-    if (method === "scraping") {
-      // This would require specialized web scraping of YouTube's transcript endpoint
-      throw new Error("Web scraping method requires access to YouTube's transcript API");
-    }
-    
-    // For audio method, would need speech-to-text service
     if (method === "audio") {
-      throw new Error("Audio extraction requires speech-to-text API access");
+      throw new Error("Audio extraction requires additional setup. Please try Caption-Based or Web Scraping methods first.");
     }
     
     throw new Error(`Unsupported extraction method: ${method}`);
     
   } catch (error: any) {
-    console.error(`Real transcript extraction failed: ${error.message}`);
-    
-    // Instead of fake data, throw error to inform user of the limitation
-    throw new Error(`Cannot extract real transcript: ${error.message}. This requires YouTube API access or specialized transcript extraction services.`);
+    console.error(`Transcript extraction failed: ${error.message}`);
+    throw new Error(`Cannot extract real transcript: ${error.message}`);
   }
 };
 
