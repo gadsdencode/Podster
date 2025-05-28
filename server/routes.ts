@@ -34,13 +34,78 @@ const extractTranscript = async (videoId: string, method: string) => {
 };
 
 const generateSummary = async (transcript: string) => {
-  // Simulate AI-generated summary
-  return "This video discusses key concepts and provides valuable insights into the topic. The presentation covers important aspects and practical applications.";
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert at creating concise, informative summaries of video transcripts. Create a 2-3 sentence summary that captures the main points and key insights.'
+          },
+          {
+            role: 'user',
+            content: `Please summarize this video transcript:\n\n${transcript}`
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.choices[0]?.message?.content || "Summary could not be generated.";
+  } catch (error) {
+    console.error('Error generating summary:', error);
+    return "AI summary generation temporarily unavailable.";
+  }
 };
 
 const extractTopics = async (transcript: string) => {
-  // Simulate AI-generated topics
-  return ["Technology", "Web Development", "Best Practices", "Innovation"];
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert at identifying key topics and themes from video transcripts. Extract 3-6 main topics as single words or short phrases. Return only the topics separated by commas.'
+          },
+          {
+            role: 'user',
+            content: `Extract the main topics from this video transcript:\n\n${transcript}`
+          }
+        ],
+        max_tokens: 100,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const topicsString = data.choices[0]?.message?.content || "";
+    return topicsString.split(',').map((topic: string) => topic.trim()).filter((topic: string) => topic.length > 0);
+  } catch (error) {
+    console.error('Error extracting topics:', error);
+    return ["AI topic extraction temporarily unavailable"];
+  }
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -62,17 +127,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Create episode
-      const episode = await storage.createEpisode({
-        ...validatedData,
-        ...videoInfo,
-        userId: 1 // Default user for now
-      });
+      // Create episode with video info
+      const episodeData = {
+        youtubeUrl: validatedData.youtubeUrl,
+        extractionMethod: validatedData.extractionMethod,
+        generateSummary: validatedData.generateSummary,
+        extractTopics: validatedData.extractTopics,
+        userId: validatedData.userId || 1
+      };
+      
+      const episode = await storage.createEpisode(episodeData);
+      
+      // Update with extracted video info
+      const updatedEpisode = await storage.updateEpisode(episode.id, videoInfo);
       
       // Add to processing queue
       await storage.addToQueue(episode.id);
       
-      res.status(201).json(episode);
+      res.status(201).json(updatedEpisode || episode);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
