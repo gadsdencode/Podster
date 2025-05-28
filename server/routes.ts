@@ -96,24 +96,18 @@ import sys
 sys.path.append('server')
 
 try:
-    from caption_scraper import CaptionScraper
+    from complete_caption_scraper import extract_complete_transcript
     
-    scraper = CaptionScraper()
-    result = scraper.extract_captions_from_page('${videoId}')
+    transcript = extract_complete_transcript('${videoId}')
     
-    if result and result.get('transcript'):
-        transcript = result['transcript']
-        if len(transcript.strip()) > 50:
-            print(transcript)
-        else:
-            print("ERROR: Transcript too short", file=sys.stderr)
-            sys.exit(1)
+    if transcript and len(transcript.strip()) > 50:
+        print(transcript)
     else:
-        print("ERROR: No transcript found via web scraping", file=sys.stderr)
+        print("ERROR: No complete transcript found via web scraping", file=sys.stderr)
         sys.exit(1)
         
 except Exception as e:
-    print(f"ERROR: Web scraping failed - {str(e)}", file=sys.stderr)
+    print(f"ERROR: Complete transcript extraction failed - {str(e)}", file=sys.stderr)
     sys.exit(1)
 `;
 
