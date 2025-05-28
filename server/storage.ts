@@ -68,7 +68,7 @@ export class MemStorage implements IStorage {
       role: "admin"
     });
   }
-
+  
   // User management
   async getUser(id: number): Promise<User | undefined> {
     return this.users.get(id);
@@ -281,8 +281,11 @@ export class MemStorage implements IStorage {
     const failedEpisodes = allEpisodes.filter(ep => ep.status === "failed");
     const queueLength = Array.from(this.processingQueue.values()).filter(item => item.status === "queued").length;
     
-    const successRate = allEpisodes.length > 0 ? 
-      (completedEpisodes.length / (completedEpisodes.length + failedEpisodes.length)) * 100 : 100;
+    // Calculate success rate based on completed vs failed episodes
+    const totalProcessed = completedEpisodes.length + failedEpisodes.length;
+    const successRate = totalProcessed > 0 
+      ? Math.round((completedEpisodes.length / totalProcessed) * 1000) / 10
+      : 100; // Default to 100% if no episodes processed
     
     const methodDistribution = {
       caption: allEpisodes.filter(ep => ep.extractionMethod === "caption").length,
@@ -290,6 +293,57 @@ export class MemStorage implements IStorage {
       audio: allEpisodes.filter(ep => ep.extractionMethod === "audio").length
     };
     
+    // Calculate average processing time for completed episodes
+    let averageProcessingTime = "0min";
+    if (completedEpisodes.length > 0) {
+      const processingTimes = completedEpisodes
+        .filter(ep => ep.processingStarted && ep.processingCompleted)
+        .map(ep => {
+          const start = ep.processingStarted!.getTime();
+          const end = ep.processingCompleted!.getTime();
+          return (end - start) / 60000; // Convert to minutes
+        });
+      
+      if (processingTimes.length > 0) {
+        const avgTime = processingTimes.reduce((sum, time) => sum + time, 0) / processingTimes.length;
+        averageProcessingTime = `${avgTime.toFixed(1)}min`;
+      }
+    }
+    
+    // Calculate total storage used based on transcript sizes and media
+    let totalStorageBytes = 0;
+    for (const episode of allEpisodes) {
+      // Add transcript size (1 byte per character as a baseline)
+      if (episode.transcript) {
+        totalStorageBytes += episode.transcript.length;
+      }
+      
+      // Add estimated thumbnail size (typically ~50KB)
+      if (episode.thumbnailUrl) {
+        totalStorageBytes += 50 * 1024;
+      }
+      
+      // Add metadata storage estimate (typically negligible, but for completeness)
+      totalStorageBytes += 1024; // 1KB for metadata
+      
+      // Add estimated word count data
+      if (episode.wordCount) {
+        // Estimate summary and topic storage if present
+        if (episode.summary) {
+          totalStorageBytes += episode.summary.length;
+        }
+        
+        if (episode.topics && Array.isArray(episode.topics) && episode.topics.length > 0) {
+          totalStorageBytes += JSON.stringify(episode.topics).length;
+        }
+      }
+    }
+    
+    // Convert bytes to GB with 1 decimal place
+    const totalStorageGB = (totalStorageBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const totalStorage = `${totalStorageGB}GB`;
+    
+    // Calculate daily processed episodes
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dailyProcessed = allEpisodes.filter(ep => 
@@ -299,9 +353,9 @@ export class MemStorage implements IStorage {
     return {
       totalEpisodes: allEpisodes.length,
       processingQueue: queueLength,
-      successRate: Math.round(successRate * 10) / 10,
-      averageProcessingTime: "2.3min",
-      totalStorage: "15.2GB",
+      successRate,
+      averageProcessingTime,
+      totalStorage,
       dailyProcessed,
       methodDistribution
     };
