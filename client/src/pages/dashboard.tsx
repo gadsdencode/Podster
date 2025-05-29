@@ -5,7 +5,7 @@ import { Link } from "wouter";
 import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye, RefreshCw, Settings } from "lucide-react";
 import { useRecentEpisodes } from "@/hooks/use-episodes";
 import { useSystemStats as useEnhancedSystemStats } from "@/hooks/useSystemStats";
-import TranscriptViewer from "@/components/episodes/transcript-viewer";
+import EnhancedTranscriptViewer from "@/components/episodes/enhanced-transcript-viewer";
 import { useState, useEffect } from "react";
 import type { Episode } from "@shared/schema";
 import { useQueryClient } from "@tanstack/react-query";
@@ -273,7 +273,7 @@ export default function Dashboard() {
 
       {/* Transcript Viewer Modal */}
       {selectedEpisode && (
-        <TranscriptViewer 
+        <EnhancedTranscriptViewer 
           episode={selectedEpisode}
           isOpen={isTranscriptOpen}
           onClose={() => setIsTranscriptOpen(false)}

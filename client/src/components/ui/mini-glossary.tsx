@@ -70,7 +70,7 @@ export default function MiniGlossary({ keywords, isOpen, onClose, title = "Episo
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <Card className="w-full max-w-4xl max-h-[90vh] flex flex-col overflow-y-auto">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="flex items-center gap-2">
             <BookOpen className="w-5 h-5" />

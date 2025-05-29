@@ -2,16 +2,23 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Sparkles, Filter, RotateCcw, BookOpen, Lightbulb } from "lucide-react";
-import { analyzeKeywords, highlightText, generateDefinitions, type AnalysisResult, type AnalysisProgressCallback } from "@/lib/keyword-analyzer";
+import { generateDefinitionsForEpisode, highlightText, type KeywordHighlight, type AnalysisResult, type AnalysisProgressCallback } from "@/lib/keyword-analyzer";
 import { Progress } from "@/components/ui/progress";
 import MiniGlossary from "@/components/ui/mini-glossary";
 
 interface HighlightedTranscriptProps {
   transcript: string;
+  existingKeywords?: any[]; // Keywords from episode data
+  existingTopics?: string[]; // Topics from episode data
+  episodeId?: number; // Episode ID for optimized definition generation
 }
 
-export default function HighlightedTranscript({ transcript }: HighlightedTranscriptProps) {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+export default function HighlightedTranscript({ 
+  transcript, 
+  existingKeywords = [], 
+  existingTopics = [], 
+  episodeId 
+}: HighlightedTranscriptProps) {
   const [isGeneratingDefinitions, setIsGeneratingDefinitions] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [showHighlights, setShowHighlights] = useState(false);
@@ -21,35 +28,58 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
   const [progressStatus, setProgressStatus] = useState<string>('');
   const [progressValue, setProgressValue] = useState<number>(0);
 
+  // Initialize analysis from existing data on component mount
+  useEffect(() => {
+    if (existingKeywords.length > 0) {
+      initializeFromExistingData();
+    }
+  }, [existingKeywords]);
+
+  const initializeFromExistingData = () => {
+    console.log('Initializing from existing keywords:', existingKeywords);
+    
+    // Convert existing keywords to the expected format
+    const keywords: KeywordHighlight[] = existingKeywords.map(kw => ({
+      keyword: kw.keyword,
+      category: kw.category,
+      confidence: kw.confidence || 0.8,
+      positions: kw.positions || [],
+      definition: kw.definition
+    }));
+
+    // Categorize keywords
+    const categories = {
+      important: keywords.filter(k => k.category === 'important').map(k => k.keyword),
+      technical: keywords.filter(k => k.category === 'technical').map(k => k.keyword),
+      name: keywords.filter(k => k.category === 'name').map(k => k.keyword),
+      concept: keywords.filter(k => k.category === 'concept').map(k => k.keyword),
+      action: keywords.filter(k => k.category === 'action').map(k => k.keyword)
+    };
+
+    const analysisResult: AnalysisResult = {
+      keywords,
+      categories,
+      analysisMetadata: {
+        aiAnalysisSucceeded: true,
+        totalKeywords: keywords.length,
+        keywordsWithDefinitions: keywords.filter(k => k.definition).length,
+        analysisMethod: 'Pre-extracted during upload',
+        coverage: 1.0,
+        analysisStrategy: 'existing'
+      }
+    };
+
+    setAnalysis(analysisResult);
+    setShowHighlights(true);
+  };
+
   const handleProgressUpdate: AnalysisProgressCallback = (status, progress) => {
     setProgressStatus(status);
     setProgressValue(progress);
   };
 
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true);
-    setError(null);
-    setProgressValue(0);
-    setProgressStatus('Preparing to analyze...');
-    
-    try {
-      // Use enhanced analysis with automatic definitions and insights
-      const result = await analyzeKeywords(transcript, handleProgressUpdate, 30000, {
-        includeDefinitions: true,
-        includeInsights: true
-      });
-      setAnalysis(result);
-      setShowHighlights(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to analyze keywords');
-      console.error('Keyword analysis error:', err);
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
   const handleGenerateDefinitions = async () => {
-    if (!analysis) return;
+    if (!analysis || !episodeId) return;
     
     setIsGeneratingDefinitions(true);
     setError(null);
@@ -57,9 +87,9 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
     setProgressStatus('Generating enhanced definitions...');
     
     try {
-      // Filter for technical and concept keywords that don't already have definitions
+      // Filter for technical, concept, and name keywords that don't already have definitions
       const keywordsNeedingDefinitions = analysis.keywords.filter(
-        k => (k.category === 'technical' || k.category === 'concept') && !k.definition
+        k => (k.category === 'technical' || k.category === 'concept' || k.category === 'name') && !k.definition
       );
       
       if (keywordsNeedingDefinitions.length === 0) {
@@ -68,23 +98,19 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
         return;
       }
       
-      const definitions = await generateDefinitions(
-        keywordsNeedingDefinitions, 
-        transcript.substring(0, 500), // Provide context
+      const result = await generateDefinitionsForEpisode(
+        episodeId,
         handleProgressUpdate
       );
       
-      // Update keywords with new definitions
-      const updatedKeywords = analysis.keywords.map(keyword => {
-        if (definitions[keyword.keyword]) {
-          return { ...keyword, definition: definitions[keyword.keyword] };
-        }
-        return keyword;
-      });
-      
+      // Update analysis with the new keywords that include definitions
       setAnalysis({
         ...analysis,
-        keywords: updatedKeywords
+        keywords: result.keywords,
+        analysisMetadata: {
+          ...analysis.analysisMetadata!,
+          keywordsWithDefinitions: result.keywords.filter(k => k.definition).length
+        }
       });
       
     } catch (err: any) {
@@ -130,17 +156,69 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
   const getDefinitionStats = () => {
     if (!analysis) return { total: 0, withDefinitions: 0 };
     
-    const technicalAndConcept = analysis.keywords.filter(
-      k => k.category === 'technical' || k.category === 'concept'
+    const technicalConceptAndNames = analysis.keywords.filter(
+      k => k.category === 'technical' || k.category === 'concept' || k.category === 'name'
     );
     
-    const withDefinitions = technicalAndConcept.filter(k => k.definition);
+    const withDefinitions = technicalConceptAndNames.filter(k => k.definition);
     
     return {
-      total: technicalAndConcept.length,
+      total: technicalConceptAndNames.length,
       withDefinitions: withDefinitions.length
     };
   };
+
+  // If no existing keywords, show a message about enabling keyword extraction
+  if (existingKeywords.length === 0) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
+          <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2 text-sm">
+            💡 Keyword Analysis Available
+          </h4>
+          <p className="text-blue-700 dark:text-blue-300 text-sm mb-3">
+            Keywords were not extracted during upload. Enable "Extract Keywords" when uploading episodes to get AI-powered keyword highlighting and definitions.
+          </p>
+          <p className="text-blue-600 dark:text-blue-400 text-xs">
+            This will analyze the transcript during processing and store keywords for instant highlighting.
+          </p>
+        </div>
+
+        {/* Show topics if available */}
+        {existingTopics.length > 0 && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-3 rounded-lg border border-green-200/50 dark:border-green-700/50">
+            <h4 className="font-medium text-green-900 dark:text-green-300 mb-2 flex items-center gap-2 text-sm">
+              🏷️ Available Topics
+            </h4>
+            <div className="flex flex-wrap gap-1.5">
+              {existingTopics.map((topic: string, index: number) => (
+                <Badge 
+                  key={index} 
+                  variant="outline" 
+                  className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-600 text-xs px-2 py-0.5"
+                >
+                  {topic}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Plain transcript */}
+        <div className="bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+          <h4 className="font-medium text-gray-900 dark:text-gray-200 mb-3 flex items-center gap-2 text-sm">
+            📝 Transcript
+          </h4>
+          <div 
+            className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed font-mono text-sm bg-gray-50 dark:bg-gray-900/50 p-3 rounded border overflow-auto max-h-[60vh]"
+            style={{ lineHeight: '1.7', wordBreak: 'break-word' }}
+          >
+            {transcript}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const categoryColors = {
     important: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 border-yellow-300 dark:border-yellow-700',
@@ -163,17 +241,7 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
       {/* Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div className="flex flex-col sm:flex-row gap-3">
-          {!isAnalyzing && !analysis && (
-            <Button
-              onClick={handleAnalyze}
-              className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-            >
-              <Sparkles className="w-4 h-4" />
-              Analyze with AI Insights
-            </Button>
-          )}
-          
-          {analysis && !isGeneratingDefinitions && getDefinitionStats().total > getDefinitionStats().withDefinitions && (
+          {!isGeneratingDefinitions && getDefinitionStats().total > getDefinitionStats().withDefinitions && (
             <Button
               onClick={handleGenerateDefinitions}
               variant="outline"
@@ -195,7 +263,7 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
             </Button>
           )}
           
-          {(isAnalyzing || isGeneratingDefinitions) && (
+          {(isGeneratingDefinitions) && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -211,7 +279,7 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
               <Button 
                 variant="ghost" 
                 size="sm"
-                onClick={isGeneratingDefinitions ? handleGenerateDefinitions : handleAnalyze}
+                onClick={handleGenerateDefinitions}
                 className="h-7 px-2"
               >
                 Retry
@@ -220,83 +288,89 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
           )}
         </div>
 
-        {/* AI Analysis Status */}
+        {/* Enhanced AI Analysis Status */}
         {analysis && (
           <div className={`text-xs p-3 rounded border ${
             analysis.analysisMetadata?.aiAnalysisSucceeded 
-              ? 'text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-              : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+              ? analysis.analysisMetadata.coverage && analysis.analysisMetadata.coverage >= 0.9
+                ? 'text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+              : 'text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
           }`}>
             <div className="flex items-center gap-2">
               <Sparkles className="w-3 h-3" />
               <span>
                 {analysis.analysisMetadata?.aiAnalysisSucceeded ? (
                   <>
-                    ✅ AI Analysis Successful: {analysis.keywords.length} keywords identified
+                    {analysis.analysisMetadata.coverage && analysis.analysisMetadata.coverage >= 0.9 ? '✅' : '⚠️'} Keywords: {analysis.keywords.length} identified during upload
                     {getDefinitionStats().withDefinitions > 0 && (
                       <span> • {getDefinitionStats().withDefinitions} with AI definitions</span>
+                    )}
+                    {analysis.analysisMetadata.analysisStrategy === 'existing' && (
+                      <span> • Using pre-extracted keywords</span>
                     )}
                   </>
                 ) : (
                   <>
-                    ⚠️ AI Analysis Failed: Using {analysis.analysisMetadata?.analysisMethod || 'fallback method'}
-                    <span> • {analysis.keywords.length} keywords found via pattern matching</span>
+                    ❌ Analysis Failed: Using fallback method
+                    <span> • {analysis.keywords.length} keywords found</span>
                   </>
                 )}
               </span>
             </div>
-            {!analysis.analysisMetadata?.aiAnalysisSucceeded && (
-              <div className="mt-1 text-xs opacity-75">
-                Keywords may not have AI-generated definitions. Check your OpenAI API key or try again.
-              </div>
-            )}
           </div>
         )}
 
         {analysis && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowHighlights(!showHighlights)}
-              className="h-8"
-            >
-              {showHighlights ? 'Hide Highlights' : 'Show Highlights'}
-            </Button>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowHighlights(!showHighlights)}
+                className="h-8 text-xs"
+              >
+                {showHighlights ? 'Hide Highlights' : 'Show Highlights'}
+              </Button>
+              
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAnalysis(null);
+                  setShowHighlights(false);
+                  setShowGlossary(false);
+                  setProgressValue(0);
+                  setProgressStatus('');
+                }}
+                className="h-8 text-xs"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Reset
+              </Button>
+            </div>
             
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setAnalysis(null);
-                setShowHighlights(false);
-                setShowGlossary(false);
-                setProgressValue(0);
-                setProgressStatus('');
-              }}
-              className="h-8"
-            >
-              <RotateCcw className="w-3 h-3 mr-1" />
-              Reset
-            </Button>
-            
-            <div className="ml-auto flex items-center">
-              <Filter className="w-4 h-4 mr-1 text-gray-500" />
-              <span className="text-xs text-gray-500 mr-2">Filter:</span>
-              {['important', 'technical', 'name', 'concept', 'action'].map((category) => {
-                const stats = getCategoryStats();
-                const count = stats[category as keyof typeof stats] || 0;
-                return (
-                  <Badge
-                    key={category}
-                    variant={selectedCategories.has(category) ? "default" : "outline"}
-                    className={`mr-1 cursor-pointer ${getCategoryColorClass(category)}`}
-                    onClick={() => toggleCategory(category)}
-                  >
-                    {getCategoryLabel(category)} ({count})
-                  </Badge>
-                );
-              })}
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center">
+                <Filter className="w-3 h-3 mr-1 text-gray-500" />
+                <span className="text-xs text-gray-500 mr-2">Filter:</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {['important', 'technical', 'name', 'concept', 'action'].map((category) => {
+                  const stats = getCategoryStats();
+                  const count = stats[category as keyof typeof stats] || 0;
+                  return (
+                    <Badge
+                      key={category}
+                      variant={selectedCategories.has(category) ? "default" : "outline"}
+                      className={`cursor-pointer text-xs px-2 py-0.5 ${getCategoryColorClass(category)}`}
+                      onClick={() => toggleCategory(category)}
+                    >
+                      {getCategoryLabel(category)} ({count})
+                    </Badge>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -304,7 +378,7 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
 
       {/* Category Filters */}
       {analysis && (
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center mb-2">
           {analysis && getFilteredKeywords().length > 0 && (
             <div className="text-xs text-gray-600 dark:text-gray-400">
               Showing {getFilteredKeywords().length} keywords
@@ -314,9 +388,9 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
       )}
 
       {/* Transcript */}
-      <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+      <div className="bg-white/50 dark:bg-gray-800/50 p-4 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
         <div 
-          className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed font-mono text-sm bg-gray-50 dark:bg-gray-900/50 p-4 rounded border overflow-auto"
+          className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 leading-relaxed font-mono text-sm bg-gray-50 dark:bg-gray-900/50 p-3 rounded border overflow-auto max-h-[60vh]"
           style={{ lineHeight: '1.7', wordBreak: 'break-word' }}
           dangerouslySetInnerHTML={{ 
             __html: getHighlightedText()
@@ -379,6 +453,10 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
         .keyword-highlight[data-definition-type="descriptive"]:after {
           content: "📝";
         }
+        /* Biographical definition indicator */
+        .keyword-highlight[data-definition-type="biographical"]:after {
+          content: "👤";
+        }
         .keyword-highlight[data-category="technical"] {
           border-bottom: 2px dotted rgba(59, 130, 246, 0.6);
         }
@@ -403,36 +481,40 @@ export default function HighlightedTranscript({ transcript }: HighlightedTranscr
 
       {/* Enhanced Keyword Legend with Definition Types */}
       {analysis && showHighlights && getFilteredKeywords().length > 0 && (
-        <div className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-900/20 dark:to-blue-900/20 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
-          <h5 className="font-medium text-sm mb-3 flex items-center gap-2">
+        <div className="p-3 bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-900/20 dark:to-blue-900/20 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+          <h5 className="font-medium text-sm mb-2 flex items-center gap-2">
             <Sparkles className="w-4 h-4" />
             Keyword Legend
           </h5>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 text-xs mb-3">
             {['important', 'technical', 'name', 'concept', 'action'].map((category) => (
-              <div key={category} className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded ${getCategoryBgClass(category)}`} />
-                <span>{getCategoryLabel(category)}</span>
+              <div key={category} className="flex items-center gap-1.5">
+                <div className={`w-2.5 h-2.5 rounded ${getCategoryBgClass(category)}`} />
+                <span className="truncate">{getCategoryLabel(category)}</span>
               </div>
             ))}
           </div>
           
           {/* Definition Type Legend */}
-          <div className="border-t pt-3 mt-3">
+          <div className="border-t pt-2 mt-2">
             <h6 className="font-medium text-xs mb-2 text-gray-600 dark:text-gray-400">Definition Types:</h6>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-              <div className="flex items-center gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 text-xs">
+              <div className="flex items-center gap-1.5">
                 <span>📚</span>
-                <span>Factual - Objective, technical definitions</span>
+                <span className="truncate">Factual</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span>⚖️</span>
-                <span>Balanced - Multiple perspectives shown</span>
+                <span className="truncate">Balanced</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span>📝</span>
-                <span>Descriptive - General explanations</span>
+                <span className="truncate">Descriptive</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span>👤</span>
+                <span className="truncate">Biographical</span>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ export interface KeywordHighlight {
     end: number;
   }>;
   definition?: string; // AI-generated definition for technical/concept keywords
-  definitionType?: 'factual' | 'balanced' | 'descriptive'; // Type of definition provided
+  definitionType?: 'factual' | 'balanced' | 'descriptive' | 'biographical'; // Type of definition provided
 }
 
 export interface AnalysisResult {
@@ -27,6 +27,12 @@ export interface AnalysisResult {
     totalKeywords: number;
     keywordsWithDefinitions: number;
     analysisMethod: string;
+    chunksProcessed?: number;
+    totalChunks?: number;
+    analysisStrategy?: string;
+    transcriptLength?: number;
+    coverage?: number;
+    failedChunks?: number;
   };
 }
 
@@ -37,22 +43,117 @@ export interface AnalysisProgressCallback {
 // Default timeout of 30 seconds
 const DEFAULT_TIMEOUT = 30000;
 
+// Client-side keyword quality validation
+const STOP_WORDS = new Set([
+  // Single letters
+  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+  // Common words
+  'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during',
+  'before', 'after', 'above', 'below', 'between', 'among', 'under', 'over', 'out', 'off', 'down', 'across', 'behind', 'beyond',
+  // Short words
+  'is', 'it', 'be', 'do', 'go', 'we', 'me', 'he', 'she', 'his', 'her', 'him', 'you', 'your', 'my', 'our', 'us', 'am', 'are', 'was', 'were',
+  'has', 'had', 'have', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must', 'shall', 'did', 'does', 'done',
+  // Articles and pronouns
+  'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'whose', 'where', 'when', 'why', 'how', 'all', 'any', 'each',
+  'every', 'some', 'many', 'much', 'more', 'most', 'few', 'less', 'least', 'no', 'not', 'only', 'own', 'other', 'such', 'same'
+]);
+
+// Client-side keyword validation function
+function isValidKeyword(keyword: string, category: string): boolean {
+  if (!keyword || typeof keyword !== 'string') {
+    return false;
+  }
+  
+  const trimmed = keyword.trim().toLowerCase();
+  
+  // Length validation
+  const minLength = category === 'name' ? 2 : 3;
+  if (trimmed.length < minLength || trimmed.length > 50) {
+    console.log(`Client: Rejected keyword "${keyword}": invalid length`);
+    return false;
+  }
+  
+  // Stop word check
+  if (STOP_WORDS.has(trimmed)) {
+    console.log(`Client: Rejected keyword "${keyword}": stop word`);
+    return false;
+  }
+  
+  // Must contain letters
+  if (!/[a-zA-Z]/.test(trimmed)) {
+    console.log(`Client: Rejected keyword "${keyword}": no letters`);
+    return false;
+  }
+  
+  // Reject purely numeric
+  if (/^\d+$/.test(trimmed)) {
+    console.log(`Client: Rejected keyword "${keyword}": purely numeric`);
+    return false;
+  }
+  
+  return true;
+}
+
+// Enhanced keyword filtering function
+function filterKeywords(keywords: KeywordHighlight[]): KeywordHighlight[] {
+  const filtered = keywords.filter(keyword => {
+    if (!isValidKeyword(keyword.keyword, keyword.category)) {
+      return false;
+    }
+    
+    // Additional quality checks
+    if (keyword.confidence < 0.3) {
+      console.log(`Client: Rejected keyword "${keyword.keyword}": low confidence`);
+      return false;
+    }
+    
+    return true;
+  });
+  
+  if (filtered.length !== keywords.length) {
+    console.log(`Client-side filtering: ${keywords.length} -> ${filtered.length} keywords (removed ${keywords.length - filtered.length} low-quality)`);
+  }
+  
+  return filtered;
+}
+
 export async function analyzeKeywords(
   transcript: string, 
   progressCallback?: AnalysisProgressCallback,
-  timeout: number = DEFAULT_TIMEOUT,
+  timeout?: number, // Now optional - will be calculated dynamically
   options: { includeDefinitions?: boolean; includeInsights?: boolean } = { includeDefinitions: true, includeInsights: true }
 ): Promise<AnalysisResult> {
   try {
     // Notify that we're starting
-    progressCallback?.('Starting AI-powered keyword analysis...', 10);
+    const transcriptLength = transcript.length;
+    const estimatedChunks = Math.ceil(transcriptLength / 3500); // Updated for new chunk size
+    
+    // Calculate dynamic timeout based on transcript length and estimated chunks
+    const dynamicTimeout = timeout || Math.max(
+      120000, // Minimum 2 minutes
+      estimatedChunks * 30000 + 60000 // 30s per chunk + 1 minute buffer
+    );
+    
+    console.log(`Dynamic timeout calculated: ${Math.round(dynamicTimeout/1000)}s for ${estimatedChunks} estimated chunks`);
+    
+    if (transcriptLength > 50000) {
+      progressCallback?.(`Starting analysis of large transcript (${Math.round(transcriptLength/1000)}k chars, ~${estimatedChunks} chunks, timeout: ${Math.round(dynamicTimeout/1000)}s)...`, 5);
+    } else {
+      progressCallback?.('Starting AI-powered keyword analysis...', 10);
+    }
     
     // Create a controller to enable timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    const timeoutId = setTimeout(() => controller.abort(), dynamicTimeout);
     
     // Start the request
-    progressCallback?.('Analyzing keywords with AI definitions...', 30);
+    if (transcriptLength > 100000) {
+      progressCallback?.('Analyzing very large transcript with intelligent sampling...', 20);
+    } else if (transcriptLength > 50000) {
+      progressCallback?.('Analyzing large transcript - this may take several minutes...', 25);
+    } else {
+      progressCallback?.('Analyzing keywords with AI definitions...', 30);
+    }
     
     const response = await fetch('/api/analyze-keywords', {
       method: 'POST',
@@ -78,15 +179,72 @@ export async function analyzeKeywords(
     progressCallback?.('Processing AI analysis results...', 80);
     const result = await response.json();
     
-    // Check if AI analysis succeeded
+    // Apply client-side quality filtering as backup
+    if (result.keywords && Array.isArray(result.keywords)) {
+      const originalCount = result.keywords.length;
+      result.keywords = filterKeywords(result.keywords);
+      
+      if (result.keywords.length !== originalCount) {
+        console.log(`Client-side quality control: filtered ${originalCount} -> ${result.keywords.length} keywords`);
+        
+        // Update categories to reflect filtered keywords
+        if (result.categories) {
+          result.categories = {
+            important: result.keywords.filter((k: KeywordHighlight) => k.category === 'important').map((k: KeywordHighlight) => k.keyword),
+            technical: result.keywords.filter((k: KeywordHighlight) => k.category === 'technical').map((k: KeywordHighlight) => k.keyword),
+            name: result.keywords.filter((k: KeywordHighlight) => k.category === 'name').map((k: KeywordHighlight) => k.keyword),
+            concept: result.keywords.filter((k: KeywordHighlight) => k.category === 'concept').map((k: KeywordHighlight) => k.keyword),
+            action: result.keywords.filter((k: KeywordHighlight) => k.category === 'action').map((k: KeywordHighlight) => k.keyword)
+          };
+        }
+        
+        // Update metadata if available
+        if (result.analysisMetadata) {
+          result.analysisMetadata.totalKeywords = result.keywords.length;
+          result.analysisMetadata.keywordsWithDefinitions = result.keywords.filter((k: KeywordHighlight) => k.definition).length;
+        }
+      }
+    }
+    
+    // Enhanced progress reporting with coverage information
     if (result.analysisMetadata) {
-      const { aiAnalysisSucceeded, keywordsWithDefinitions, analysisMethod } = result.analysisMetadata;
+      const { 
+        aiAnalysisSucceeded, 
+        keywordsWithDefinitions, 
+        analysisMethod, 
+        chunksProcessed, 
+        totalChunks, 
+        failedChunks,
+        analysisStrategy,
+        coverage 
+      } = result.analysisMetadata;
       
       if (aiAnalysisSucceeded) {
-        progressCallback?.(`AI analysis complete! ${keywordsWithDefinitions} definitions generated`, 100);
+        const coveragePercent = coverage ? Math.round(coverage * 100) : 100;
+        const strategyText = analysisStrategy === 'sampled' ? ' (intelligent sampling)' : '';
+        const failureText = failedChunks > 0 ? ` • ${failedChunks} chunks failed but processing continued` : '';
+        
+        if (coveragePercent >= 90) {
+          progressCallback?.(`✅ AI analysis complete! ${keywordsWithDefinitions} definitions generated. Coverage: ${coveragePercent}%${strategyText}${failureText}`, 100);
+        } else if (coveragePercent >= 70) {
+          progressCallback?.(`⚠️ AI analysis mostly complete! ${keywordsWithDefinitions} definitions generated. Coverage: ${coveragePercent}%${strategyText}${failureText}`, 100);
+        } else {
+          progressCallback?.(`⚠️ AI analysis partially complete! ${keywordsWithDefinitions} definitions generated. Coverage: ${coveragePercent}%${strategyText}${failureText}`, 100);
+        }
       } else {
         progressCallback?.(`Analysis complete using ${analysisMethod}`, 100);
         console.warn('AI analysis failed, using fallback method');
+      }
+      
+      // Log detailed analysis information
+      if (chunksProcessed && totalChunks) {
+        console.log(`Analysis coverage: ${chunksProcessed}/${totalChunks} chunks (${Math.round((chunksProcessed/totalChunks)*100)}%)`);
+        if (failedChunks > 0) {
+          console.log(`Failed chunks: ${failedChunks} (processing continued despite failures)`);
+        }
+        if (analysisStrategy === 'sampled') {
+          console.log('Used intelligent sampling for very large transcript');
+        }
       }
     } else {
       progressCallback?.('Analysis complete!', 100);
@@ -98,12 +256,33 @@ export async function analyzeKeywords(
     
     // Check if this was an abort/timeout
     if (error instanceof DOMException && error.name === 'AbortError') {
-      progressCallback?.('Analysis timed out. Trying basic analysis...', 90);
+      progressCallback?.('⏱️ Analysis took longer than expected. Attempting to retrieve partial results...', 90);
+      
+      // Try to get any partial results that might be available
+      try {
+        const partialResponse = await fetch('/api/analyze-keywords-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript: transcript.substring(0, 1000) }) // Send a sample for cache lookup
+        });
+        
+        if (partialResponse.ok) {
+          const partialResult = await partialResponse.json();
+          if (partialResult.keywords && partialResult.keywords.length > 0) {
+            progressCallback?.('✅ Retrieved partial analysis results', 100);
+            return partialResult;
+          }
+        }
+      } catch (partialError) {
+        console.log('No partial results available');
+      }
+      
+      progressCallback?.('⏱️ Analysis timeout - trying basic analysis...', 90);
       return await tryBasicAnalysis(transcript, progressCallback);
     }
     
     // Other errors - try basic analysis as fallback
-    progressCallback?.('AI analysis failed. Trying basic analysis...', 90);
+    progressCallback?.('❌ AI analysis failed - trying basic analysis...', 90);
     return await tryBasicAnalysis(transcript, progressCallback);
   }
 }
@@ -111,6 +290,8 @@ export async function analyzeKeywords(
 // Helper function to try basic analysis as fallback
 async function tryBasicAnalysis(transcript: string, progressCallback?: AnalysisProgressCallback): Promise<AnalysisResult> {
   try {
+    progressCallback?.('Attempting basic keyword extraction...', 95);
+    
     const basicResponse = await fetch('/api/analyze-keywords-basic', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -119,7 +300,7 @@ async function tryBasicAnalysis(transcript: string, progressCallback?: AnalysisP
     
     if (basicResponse.ok) {
       const result = await basicResponse.json();
-      progressCallback?.('Basic analysis completed', 100);
+      progressCallback?.('✅ Basic analysis completed - limited definitions available', 100);
       return result;
     }
   } catch (basicError) {
@@ -127,7 +308,7 @@ async function tryBasicAnalysis(transcript: string, progressCallback?: AnalysisP
   }
   
   // Final fallback
-  progressCallback?.('All analysis methods failed', 0);
+  progressCallback?.('⚠️ Using offline keyword extraction - no AI definitions available', 100);
   return generateFallbackAnalysis(transcript);
 }
 
@@ -142,10 +323,10 @@ function generateFallbackAnalysis(transcript: string): AnalysisResult {
   }
   
   // Get most frequent words
-  const keywords = Array.from(wordCounts.entries())
+  const rawKeywords = Array.from(wordCounts.entries())
     .filter(([word, count]) => count > 1)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 15)
+    .slice(0, 20) // Get more initially since we'll filter
     .map(([word, count]) => {
       // Simple categorization
       let category: 'important' | 'technical' | 'name' | 'concept' | 'action' = 'important';
@@ -167,6 +348,9 @@ function generateFallbackAnalysis(transcript: string): AnalysisResult {
         positions: findAllPositions(transcript, word)
       };
     });
+  
+  // Apply quality filtering to fallback keywords
+  const keywords = filterKeywords(rawKeywords);
   
   // Create categories
   const categories: AnalysisResult['categories'] = {
@@ -330,21 +514,28 @@ function createEnhancedTooltip(category: string, confidence: number, definition?
   };
   
   let tooltip = `🏷️ ${category.toUpperCase()} (${confidence}% confidence)\n`;
-  tooltip += `${categoryDescriptions[category as keyof typeof categoryDescriptions] || 'Identified keyword'}`;
   
   if (definition) {
     // Add definition type indicator
     const typeIndicator = definitionType === 'balanced' ? '⚖️ Balanced View' : 
                          definitionType === 'factual' ? '📚 Factual' : 
+                         definitionType === 'biographical' ? '👤 Person Info' :
                          '📝 Descriptive';
     
-    tooltip += `\n\n${typeIndicator}:\n${definition}`;
+    tooltip += `\n${typeIndicator}:\n${definition}`;
     
     if (definitionType === 'balanced') {
       tooltip += `\n\n💡 This definition presents multiple perspectives on a contested topic.`;
+    } else if (definitionType === 'biographical') {
+      tooltip += `\n\n💡 AI-generated information about this person and their relevance.`;
     }
-  } else if (category === 'technical' || category === 'concept') {
-    tooltip += `\n\n💡 Click "Generate Definitions" for AI explanation`;
+  } else {
+    // Show category description only if no AI definition is available
+    tooltip += `${categoryDescriptions[category as keyof typeof categoryDescriptions] || 'Identified keyword'}`;
+    
+    if (category === 'technical' || category === 'concept' || category === 'name') {
+      tooltip += `\n\n💡 Click "Generate Definitions" for AI explanation`;
+    }
   }
   
   return tooltip;
@@ -384,30 +575,64 @@ export async function generateDefinitions(
   progressCallback?: AnalysisProgressCallback
 ): Promise<Record<string, string>> {
   try {
-    progressCallback?.('Generating definitions...', 0);
+    progressCallback?.('Generating AI definitions...', 10);
     
-    const response = await fetch(`${API_BASE}/api/generate-definitions`, {
+    const response = await fetch('/api/generate-definitions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        keywords: keywords.filter(k => k.category === 'technical' || k.category === 'concept'),
-        context
-      }),
+      body: JSON.stringify({ 
+        keywords,
+        context 
+      })
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`Failed to generate definitions: ${response.statusText}`);
     }
 
+    progressCallback?.('Processing definitions...', 80);
     const result = await response.json();
-    progressCallback?.('Definitions generated', 100);
     
+    progressCallback?.('Definitions generated successfully', 100);
     return result.definitions || {};
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating definitions:', error);
-    throw error;
+    throw new Error(`Failed to generate definitions: ${error.message}`);
+  }
+}
+
+// New function to generate definitions for existing episode keywords
+export async function generateDefinitionsForEpisode(
+  episodeId: number,
+  progressCallback?: AnalysisProgressCallback
+): Promise<{ keywords: KeywordHighlight[], newDefinitions: Record<string, string> }> {
+  try {
+    progressCallback?.('Generating definitions for existing keywords...', 10);
+    
+    const response = await fetch(`/api/episodes/${episodeId}/generate-definitions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to generate definitions: ${response.statusText}`);
+    }
+
+    progressCallback?.('Processing definitions...', 80);
+    const result = await response.json();
+    
+    progressCallback?.('Definitions generated successfully', 100);
+    return {
+      keywords: result.keywords || [],
+      newDefinitions: result.newDefinitions || {}
+    };
+  } catch (error: any) {
+    console.error('Error generating definitions for episode:', error);
+    throw new Error(`Failed to generate definitions: ${error.message}`);
   }
 }
 

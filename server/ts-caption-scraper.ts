@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { TranscriptFormatter, type FormattedTranscript } from './transcript-formatter';
 
 interface CaptionTrack {
   languageCode: string;
@@ -10,6 +11,7 @@ interface CaptionTrack {
 
 export interface CaptionResult {
   transcript: string;
+  formattedTranscript?: FormattedTranscript;
   title: string;
   date: string;
   channel: string;
@@ -19,6 +21,11 @@ export interface CaptionResult {
 
 export class TsCaptionScraper {
   private readonly userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  private formatter: TranscriptFormatter;
+  
+  constructor() {
+    this.formatter = new TranscriptFormatter();
+  }
   
   async extractCaptions(videoId: string): Promise<CaptionResult | null> {
     try {
@@ -35,8 +42,20 @@ export class TsCaptionScraper {
       // Get basic metadata
       const { title, date, channel } = await this.getBasicMetadata(videoId);
       
+      // Format the transcript using AI
+      let formattedTranscript: FormattedTranscript | undefined;
+      try {
+        console.log('Formatting transcript with AI...');
+        formattedTranscript = await this.formatter.formatTranscript(captionText);
+        console.log(`Transcript formatted successfully: ${formattedTranscript.processingMetadata.wordCount} words, ${formattedTranscript.processingMetadata.paragraphCount} paragraphs`);
+      } catch (error) {
+        console.error('Failed to format transcript with AI:', error);
+        // Continue without formatted transcript - the raw transcript will still be available
+      }
+      
       return {
-        transcript: captionText,
+        transcript: captionText, // Keep raw transcript for backward compatibility
+        formattedTranscript,     // Add formatted version
         title: title || `Video ${videoId}`,
         date: date || new Date().toISOString().split('T')[0],
         channel: channel || 'Unknown Channel',

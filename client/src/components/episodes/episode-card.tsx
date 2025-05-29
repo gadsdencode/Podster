@@ -1,13 +1,13 @@
 import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Eye, Trash2, RotateCcw } from "lucide-react";
 import { useDeleteEpisode } from "@/hooks/use-episodes";
 import { useToast } from "@/hooks/use-toast";
-import TranscriptViewer from "./transcript-viewer";
+import EnhancedTranscriptViewer from "./enhanced-transcript-viewer";
 import { useState, useRef } from "react";
-import type { Episode } from "@shared/schema";
+import type { Episode } from "@/../../shared/schema";
 
 interface EpisodeCardProps {
   episode: Episode;
@@ -160,7 +160,7 @@ export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
           </CardContent>
         </Card>
         
-        <TranscriptViewer 
+        <EnhancedTranscriptViewer 
           episode={episode}
           isOpen={isTranscriptOpen}
           onClose={() => setIsTranscriptOpen(false)}
@@ -233,7 +233,7 @@ export default function EpisodeCard({ episode, viewMode }: EpisodeCardProps) {
         </CardContent>
       </Card>
       
-      <TranscriptViewer 
+      <EnhancedTranscriptViewer 
         episode={episode}
         isOpen={isTranscriptOpen}
         onClose={() => setIsTranscriptOpen(false)}
