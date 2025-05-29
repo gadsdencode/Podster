@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Bell } from "lucide-react";
+import { NotificationBell } from "@/components/ui/notification-bell";
 
 export default function Header() {
   return (
@@ -13,13 +13,7 @@ export default function Header() {
         </div>
         
         <div className="flex items-center space-x-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="glassmorphism border border-white/10 hover:bg-white/20"
-          >
-            <Bell className="w-5 h-5" />
-          </Button>
+          <NotificationBell />
         </div>
       </div>
     </header>
