@@ -62,28 +62,28 @@ export default function TranscriptModal({ episode, isOpen, onClose }: Transcript
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-[80vh] glassmorphism border-white/20">
+      <DialogContent className="max-w-5xl h-[90vh] glassmorphism border-white/20 flex flex-col p-0">
         {/* Header */}
-        <DialogHeader className="border-b border-white/10 pb-4">
+        <DialogHeader className="border-b border-white/10 pb-3 px-6 pt-6 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="text-xl">{episode.title}</DialogTitle>
-              <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
-                <span>{episode.channel}</span>
+            <div className="flex-1 min-w-0">
+              <DialogTitle className="text-lg truncate">{episode.title}</DialogTitle>
+              <div className="flex items-center space-x-3 mt-2 text-xs text-muted-foreground">
+                <span className="truncate max-w-[200px]">{episode.channel}</span>
                 <span>•</span>
                 <span>{episode.duration}</span>
                 <span>•</span>
                 <span>{episode.wordCount} words</span>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose} className="flex-shrink-0">
               <X className="h-4 w-4" />
             </Button>
           </div>
         </DialogHeader>
 
         {/* Search Bar */}
-        <div className="flex items-center space-x-4 py-4 border-b border-white/10">
+        <div className="flex items-center space-x-4 py-3 border-b border-white/10 px-6 flex-shrink-0">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -106,7 +106,7 @@ export default function TranscriptModal({ episode, isOpen, onClose }: Transcript
         </div>
 
         {/* Transcript Content */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 px-6">
           <ScrollArea className="h-full pr-4">
             {transcriptSegments.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
@@ -115,23 +115,23 @@ export default function TranscriptModal({ episode, isOpen, onClose }: Transcript
                 <p>This episode doesn't have a transcript yet or processing is still in progress.</p>
               </div>
             ) : (
-              <div className="space-y-4 font-mono text-sm leading-relaxed">
+              <div className="space-y-3 font-mono text-sm leading-relaxed py-4">
                 {filteredSegments.map((segment, index) => (
                   <motion.div
                     key={index}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.02 }}
-                    className="flex space-x-4 hover:bg-white/5 rounded-lg p-3 transition-colors"
+                    className="flex space-x-3 hover:bg-white/5 rounded-lg p-2 transition-colors"
                   >
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-primary hover:text-primary/80 min-w-[60px] h-auto p-1 text-xs"
+                      className="text-primary hover:text-primary/80 min-w-[60px] h-auto p-1 text-xs flex-shrink-0"
                     >
                       {segment.timestamp}
                     </Button>
-                    <p className="text-slate-300 flex-1">
+                    <p className="text-slate-300 flex-1 min-w-0">
                       {highlightText(segment.text, searchQuery)}
                     </p>
                   </motion.div>
@@ -149,24 +149,24 @@ export default function TranscriptModal({ episode, isOpen, onClose }: Transcript
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between pt-4 border-t border-white/10">
-          <div className="flex items-center space-x-4">
-            <Button variant="outline" className="glassmorphism border-white/20">
-              <Download className="mr-2 h-4 w-4" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-white/10 px-6 pb-6 flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            <Button variant="outline" className="glassmorphism border-white/20 text-xs">
+              <Download className="mr-2 h-3 w-3" />
               Export
             </Button>
-            <Button variant="outline" className="glassmorphism border-white/20">
-              <Edit className="mr-2 h-4 w-4" />
+            <Button variant="outline" className="glassmorphism border-white/20 text-xs">
+              <Edit className="mr-2 h-3 w-3" />
               Edit
             </Button>
-            <Button variant="outline" className="glassmorphism border-white/20">
-              <ExternalLink className="mr-2 h-4 w-4" />
+            <Button variant="outline" className="glassmorphism border-white/20 text-xs">
+              <ExternalLink className="mr-2 h-3 w-3" />
               Open Video
             </Button>
           </div>
           
           {searchQuery && (
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               {totalMatches} matches found
             </div>
           )}

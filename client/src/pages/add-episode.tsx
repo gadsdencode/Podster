@@ -18,6 +18,7 @@ export default function AddEpisode() {
   const [extractionMethod, setExtractionMethod] = useState<ExtractionMethod>("scraping");
   const [generateSummary, setGenerateSummary] = useState(false);
   const [extractTopics, setExtractTopics] = useState(false);
+  const [extractKeywords, setExtractKeywords] = useState(false);
   const [processingEpisodeId, setProcessingEpisodeId] = useState<number | null>(null);
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   
@@ -42,6 +43,7 @@ export default function AddEpisode() {
         extractionMethod,
         generateSummary,
         extractTopics,
+        extractKeywords,
         userId: 1 // Default user
       });
 
@@ -132,6 +134,16 @@ export default function AddEpisode() {
                       />
                       <Label htmlFor="topics" className="text-sm">
                         Extract key topics
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="keywords"
+                        checked={extractKeywords}
+                        onCheckedChange={(checked) => setExtractKeywords(checked === true)}
+                      />
+                      <Label htmlFor="keywords" className="text-sm">
+                        Extract keywords (AI-powered highlighting & definitions)
                       </Label>
                     </div>
                   </div>

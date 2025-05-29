@@ -144,6 +144,7 @@ export class MemStorage implements IStorage {
       transcript: null,
       summary: null,
       topics: [],
+      keywords: [],
       wordCount: null,
       errorMessage: null,
       // These will be populated by the video info extraction
@@ -156,6 +157,7 @@ export class MemStorage implements IStorage {
       progress: null,
       currentStep: null,
       extractTopics: false,
+      extractKeywords: false,
       generateSummary: false, 
     };
     this.episodes.set(id, newEpisode);
@@ -593,7 +595,8 @@ export class PostgresStorage implements IStorage {
       videoId: tempVideoId, // Use temporary videoId to satisfy unique constraint
       title: insertEpisode.youtubeUrl.split('v=')[1] || "Untitled", // Extract video ID as title
       generateSummary: insertEpisode.generateSummary || false,
-      extractTopics: insertEpisode.extractTopics || false
+      extractTopics: insertEpisode.extractTopics || false,
+      extractKeywords: insertEpisode.extractKeywords || false
     }).returning();
     return result[0];
   }

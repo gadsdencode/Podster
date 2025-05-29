@@ -30,8 +30,13 @@ export const episodes = pgTable("episodes", {
   status: text("status").notNull().default("pending"), // "pending", "processing", "completed", "failed"
   extractionMethod: text("extraction_method").notNull(), // "caption", "scraping", "audio"
   transcript: text("transcript"),
+  formattedTranscript: text("formatted_transcript"),
+  transcriptSentences: jsonb("transcript_sentences").default([]),
+  transcriptParagraphs: jsonb("transcript_paragraphs").default([]),
+  transcriptMetadata: jsonb("transcript_metadata"),
   summary: text("summary"),
   topics: jsonb("topics").default([]),
+  keywords: jsonb("keywords").default([]),
   wordCount: integer("word_count"),
   progress: integer("progress").default(0),
   currentStep: text("current_step").default("Preparing to process..."),
@@ -42,6 +47,7 @@ export const episodes = pgTable("episodes", {
   userId: integer("user_id").references(() => users.id).notNull(),
   generateSummary: boolean("generate_summary").default(false),
   extractTopics: boolean("extract_topics").default(false),
+  extractKeywords: boolean("extract_keywords").default(false),
 });
 
 export const searchQueries = pgTable("search_queries", {
@@ -84,6 +90,7 @@ export const insertEpisodeSchema = createInsertSchema(episodes).omit({
   transcript: true,
   summary: true,
   topics: true,
+  keywords: true,
   wordCount: true,
   errorMessage: true,
 }).extend({
@@ -91,6 +98,7 @@ export const insertEpisodeSchema = createInsertSchema(episodes).omit({
   extractionMethod: z.enum(["caption", "scraping", "audio"]),
   generateSummary: z.boolean().optional(),
   extractTopics: z.boolean().optional(),
+  extractKeywords: z.boolean().optional(),
 });
 
 export const insertSearchQuerySchema = createInsertSchema(searchQueries).omit({

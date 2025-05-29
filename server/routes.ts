@@ -9,6 +9,10 @@ import path from "path";
 import { TsCaptionScraper } from "./ts-caption-scraper";
 import { TsAdvancedScraper } from "./ts-advanced-scraper";
 import { KeywordAnalyzer } from "./keyword-analyzer";
+import { WebSocketService } from "./websocket";
+import { DefinitionGenerator } from "./keyword-analyzer";
+import { OpenAI } from "openai";
+import { TranscriptFormatter, type FormattedTranscript } from "./transcript-formatter";
 
 dotenv.config();
 
@@ -16,6 +20,7 @@ dotenv.config();
 const captionScraper = new TsCaptionScraper();
 const advancedScraper = new TsAdvancedScraper();
 const keywordAnalyzer = new KeywordAnalyzer();
+const definitionGenerator = new DefinitionGenerator();
 
 // Mock YouTube processing functions
 const extractVideoInfo = async (url: string) => {
@@ -135,7 +140,7 @@ const generateSummary = async (transcript: string) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -165,34 +170,27 @@ const generateSummary = async (transcript: string) => {
 
 const extractTopics = async (transcript: string) => {
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert at identifying key topics and themes from video transcripts. Extract 3-6 main topics as single words or short phrases. Return only the topics separated by commas.'
-          },
-          {
-            role: 'user',
-            content: `Extract the main topics from this video transcript:\n\n${transcript}`
-          }
-        ],
-        max_tokens: 100,
-        temperature: 0.2,
-      }),
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
     });
 
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.status}`);
-    }
+    const response = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: 'You are an expert at identifying key topics and themes from video transcripts. Extract 3-6 main topics as single words or short phrases. Return only the topics separated by commas.'
+        },
+        {
+          role: "user",
+          content: `Extract the main topics from this video transcript:\n\n${transcript}`
+        }
+      ],
+      max_tokens: 150,
+      temperature: 0.3
+    });
 
-    const data = await response.json();
+    const data = response;
     const topicsString = data.choices[0]?.message?.content || "";
     return topicsString.split(',').map((topic: string) => topic.trim()).filter((topic: string) => topic.length > 0);
   } catch (error) {
@@ -201,8 +199,34 @@ const extractTopics = async (transcript: string) => {
   }
 };
 
+// Extract keywords using the existing keyword analyzer
+const extractKeywords = async (transcript: string) => {
+  try {
+    console.log('Extracting keywords from transcript...');
+    const analysisResult = await keywordAnalyzer.analyzeText(transcript, {
+      includeDefinitions: false, // Don't generate definitions during upload for performance
+      includeInsights: false
+    });
+    
+    // Return simplified keyword data for storage
+    return analysisResult.keywords.map(keyword => ({
+      keyword: keyword.keyword,
+      category: keyword.category,
+      confidence: keyword.confidence,
+      positions: keyword.positions
+    }));
+  } catch (error) {
+    console.error('Error extracting keywords:', error);
+    return [];
+  }
+};
+
 // Function to process episodes automatically with progress tracking
-const processEpisode = async (episodeId: number, options: { generateSummary?: boolean; extractTopics?: boolean }) => {
+const processEpisode = async (
+  episodeId: number, 
+  options: { generateSummary?: boolean; extractTopics?: boolean; extractKeywords?: boolean },
+  wsService?: WebSocketService
+) => {
   try {
     const episode = await storage.getEpisode(episodeId);
     if (!episode) {
@@ -213,83 +237,159 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
     console.log(`Starting processing for episode ${episodeId} with method: ${episode.extractionMethod}`);
     
     // Step 1: Initialize processing (10%)
-    await storage.updateEpisode(episodeId, { 
-      status: "processing",
+    const update1 = { 
+      status: "processing" as const,
       progress: 10,
       currentStep: "Initializing extraction",
       processingStarted: new Date()
-    });
+    };
+    await storage.updateEpisode(episodeId, update1);
+    wsService?.emitProcessingUpdate(episodeId, update1);
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    // Step 2: Extract transcript (60%)
-    await storage.updateEpisode(episodeId, { 
+    // Step 2: Extract transcript (40%)
+    const update2 = { 
       progress: 30,
       currentStep: "Extracting transcript"
-    });
+    };
+    await storage.updateEpisode(episodeId, update2);
+    wsService?.emitProcessingUpdate(episodeId, update2);
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
     const wordCount = transcript.split(/\s+/).length;
     
-    await storage.updateEpisode(episodeId, { 
-      progress: 60,
+    const update3 = { 
+      progress: 40,
       currentStep: "Transcript extracted successfully"
-    });
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    };
+    await storage.updateEpisode(episodeId, update3);
+    wsService?.emitProcessingUpdate(episodeId, update3);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Step 3: Format transcript with AI (60%)
+    const update4 = { 
+      progress: 50,
+      currentStep: "Formatting transcript with AI"
+    };
+    await storage.updateEpisode(episodeId, update4);
+    wsService?.emitProcessingUpdate(episodeId, update4);
+    
+    let formattedTranscript: FormattedTranscript | undefined;
+    try {
+      console.log(`Formatting transcript for episode ${episodeId}`);
+      const formatter = new TranscriptFormatter();
+      formattedTranscript = await formatter.formatTranscript(transcript);
+      console.log(`Transcript formatted: ${formattedTranscript.processingMetadata.wordCount} words, ${formattedTranscript.processingMetadata.paragraphCount} paragraphs`);
+    } catch (error) {
+      console.error(`Failed to format transcript for episode ${episodeId}:`, error);
+      // Continue without formatted transcript - the raw transcript will still be available
+    }
+    
+    const update5 = { 
+      progress: 60,
+      currentStep: "Transcript formatting completed"
+    };
+    await storage.updateEpisode(episodeId, update5);
+    wsService?.emitProcessingUpdate(episodeId, update5);
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     let summary = null;
     let topics: string[] = [];
+    let keywords: any[] = [];
     
-    // Step 3: Generate AI content if requested
+    // Step 4: Generate AI content if requested
     if (options.generateSummary) {
-      await storage.updateEpisode(episodeId, { 
+      const update6 = { 
         progress: 70,
         currentStep: "Generating AI summary"
-      });
+      };
+      await storage.updateEpisode(episodeId, update6);
+      wsService?.emitProcessingUpdate(episodeId, update6);
       console.log(`Generating AI summary for episode ${episodeId}`);
       summary = await generateSummary(transcript);
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     if (options.extractTopics) {
-      await storage.updateEpisode(episodeId, { 
-        progress: 85,
+      const update7 = { 
+        progress: 80,
         currentStep: "Extracting key topics"
-      });
+      };
+      await storage.updateEpisode(episodeId, update7);
+      wsService?.emitProcessingUpdate(episodeId, update7);
       console.log(`Extracting AI topics for episode ${episodeId}`);
       topics = await extractTopics(transcript);
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
-    // Step 4: Finalize (100%)
-    await storage.updateEpisode(episodeId, { 
+    if (options.extractKeywords) {
+      const update8 = { 
+        progress: 90,
+        currentStep: "Extracting keywords"
+      };
+      await storage.updateEpisode(episodeId, update8);
+      wsService?.emitProcessingUpdate(episodeId, update8);
+      console.log(`Extracting keywords for episode ${episodeId}`);
+      keywords = await extractKeywords(transcript);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    // Step 5: Finalize (100%)
+    const update9 = { 
       progress: 95,
       currentStep: "Finalizing processing"
-    });
+    };
+    await storage.updateEpisode(episodeId, update9);
+    wsService?.emitProcessingUpdate(episodeId, update9);
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    // Complete processing
-    await storage.updateEpisode(episodeId, {
-      status: "completed",
+    // Complete processing with formatted transcript data
+    const finalUpdate: any = {
+      status: "completed" as const,
       transcript,
       summary,
       topics,
+      keywords,
       wordCount,
       progress: 100,
       currentStep: "Processing completed",
       processingCompleted: new Date()
-    });
+    };
+    
+    // Add formatted transcript data if available
+    if (formattedTranscript) {
+      finalUpdate.formattedTranscript = formattedTranscript.formatted;
+      finalUpdate.transcriptSentences = formattedTranscript.sentences;
+      finalUpdate.transcriptParagraphs = formattedTranscript.paragraphs;
+      finalUpdate.transcriptMetadata = formattedTranscript.processingMetadata;
+    }
+    
+    await storage.updateEpisode(episodeId, finalUpdate);
+    wsService?.emitProcessingUpdate(episodeId, finalUpdate);
 
     console.log(`Processing completed for episode ${episodeId}`);
+    
+    // Emit system updates for stats and queue
+    if (wsService) {
+      const stats = await storage.getSystemStats();
+      wsService.emitStatsUpdate(stats);
+      
+      const queueItems = await storage.getQueueItems();
+      wsService.emitQueueUpdate(queueItems);
+    }
+    
   } catch (error: any) {
     console.error(`Processing failed for episode ${episodeId}:`, error);
-    await storage.updateEpisode(episodeId, {
-      status: "failed",
+    const errorUpdate = {
+      status: "failed" as const,
       errorMessage: error.message,
       progress: 0,
       currentStep: "Processing failed",
       processingCompleted: new Date()
-    });
+    };
+    await storage.updateEpisode(episodeId, errorUpdate);
+    wsService?.emitProcessingUpdate(episodeId, errorUpdate);
   }
 };
 
@@ -400,6 +500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         extractionMethod: validatedData.extractionMethod,
         generateSummary: validatedData.generateSummary,
         extractTopics: validatedData.extractTopics,
+        extractKeywords: validatedData.extractKeywords,
         userId: validatedData.userId || 1
       };
       
@@ -416,8 +517,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           await processEpisode(episode.id, {
             generateSummary: validatedData.generateSummary,
-            extractTopics: validatedData.extractTopics
-          });
+            extractTopics: validatedData.extractTopics,
+            extractKeywords: validatedData.extractKeywords
+          }, wsService);
         } catch (error) {
           console.error('Error starting episode processing:', error);
         }
@@ -613,8 +715,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Keyword analysis endpoint
+  // Enhanced keyword analysis endpoint (now the default)
   app.post("/api/analyze-keywords", async (req, res) => {
+    try {
+      const { transcript, includeDefinitions = true, includeInsights = true } = req.body;
+      
+      if (!transcript) {
+        return res.status(400).json({ error: "Transcript is required" });
+      }
+
+      // Use the enhanced KeywordAnalyzer service with automatic insights and definitions
+      const analysisResult = await keywordAnalyzer.analyzeText(transcript, {
+        includeDefinitions,
+        includeInsights
+      });
+      
+      res.json(analysisResult);
+    } catch (error: any) {
+      console.error("Error analyzing keywords:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze keywords" });
+    }
+  });
+
+  // Basic keyword analysis without AI enhancements (for performance)
+  app.post("/api/analyze-keywords-basic", async (req, res) => {
     try {
       const { transcript } = req.body;
       
@@ -622,12 +746,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Transcript is required" });
       }
 
-      // Use the KeywordAnalyzer service
-      const analysisResult = await keywordAnalyzer.analyzeText(transcript);
+      // Use basic analysis without definitions or insights
+      const analysisResult = await keywordAnalyzer.analyzeText(transcript, {
+        includeDefinitions: false,
+        includeInsights: false
+      });
       
       res.json(analysisResult);
     } catch (error: any) {
       console.error("Error analyzing keywords:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze keywords" });
+    }
+  });
+
+  // Generate definitions for specific keywords
+  app.post("/api/generate-definitions", async (req, res) => {
+    try {
+      const { keywords, context } = req.body;
+      
+      if (!keywords || !Array.isArray(keywords)) {
+        return res.status(400).json({ error: "Keywords array is required" });
+      }
+
+      const definitions = new Map<string, string>();
+      
+      for (const keywordData of keywords) {
+        if (keywordData.category === 'technical' || keywordData.category === 'concept') {
+          try {
+            const definition = await definitionGenerator.generateDefinition(
+              keywordData.keyword, 
+              keywordData.category, 
+              context
+            );
+            definitions.set(keywordData.keyword, definition);
+          } catch (error) {
+            console.error(`Failed to generate definition for ${keywordData.keyword}:`, error);
+          }
+        }
+      }
+      
+      res.json({ definitions: Object.fromEntries(definitions) });
+    } catch (error: any) {
+      console.error("Error generating definitions:", error);
+      res.status(500).json({ error: error.message || "Failed to generate definitions" });
+    }
+  });
+
+  // Enhanced keyword analysis with optional definitions
+  app.post("/api/analyze-keywords-with-definitions", async (req, res) => {
+    try {
+      const { transcript, includeDefinitions = false } = req.body;
+      
+      if (!transcript) {
+        return res.status(400).json({ error: "Transcript is required" });
+      }
+
+      // First, get the keyword analysis
+      const analysisResult = await keywordAnalyzer.analyzeText(transcript);
+      
+      if (includeDefinitions) {
+        // Generate definitions for technical and concept keywords
+        const keywordsWithDefinitions = await definitionGenerator.generateDefinitionsForKeywords(
+          analysisResult.keywords,
+          transcript.substring(0, 500) // Provide context from beginning of transcript
+        );
+        
+        analysisResult.keywords = keywordsWithDefinitions;
+      }
+      
+      res.json(analysisResult);
+    } catch (error: any) {
+      console.error("Error analyzing keywords with definitions:", error);
       res.status(500).json({ error: error.message || "Failed to analyze keywords" });
     }
   });
@@ -797,8 +986,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // WebSocket for real-time updates would be implemented here
-  // For now, we'll use polling endpoints
+  // WebSocket for real-time updates - NOW IMPLEMENTED!
+  const httpServer = createServer(app);
+  const wsService = new WebSocketService(httpServer);
+  
+  // Make wsService available to routes that need it
+  app.locals.wsService = wsService;
 
   app.get("/api/processing-status/:id", async (req, res) => {
     try {
@@ -842,6 +1035,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
+  // Generate definitions for existing keywords from episode data
+  app.post("/api/episodes/:id/generate-definitions", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const episode = await storage.getEpisode(id);
+      
+      if (!episode) {
+        return res.status(404).json({ message: "Episode not found" });
+      }
+      
+      if (!episode.keywords || !Array.isArray(episode.keywords)) {
+        return res.status(400).json({ message: "No keywords found for this episode" });
+      }
+      
+      // Filter for keywords that need definitions (technical, concept, name categories)
+      const keywordsNeedingDefinitions = episode.keywords.filter(
+        (kw: any) => (kw.category === 'technical' || kw.category === 'concept' || kw.category === 'name') && !kw.definition
+      );
+      
+      if (keywordsNeedingDefinitions.length === 0) {
+        return res.json({ message: "All keywords already have definitions", keywords: episode.keywords });
+      }
+      
+      // Generate definitions using the definition generator
+      const definitions = new Map<string, string>();
+      
+      for (const keywordData of keywordsNeedingDefinitions) {
+        try {
+          const definition = await definitionGenerator.generateDefinition(
+            keywordData.keyword, 
+            keywordData.category, 
+            episode.transcript?.substring(0, 500) || '' // Provide context from transcript
+          );
+          definitions.set(keywordData.keyword, definition);
+        } catch (error) {
+          console.error(`Failed to generate definition for ${keywordData.keyword}:`, error);
+        }
+      }
+      
+      // Update keywords with new definitions
+      const updatedKeywords = episode.keywords.map((keyword: any) => {
+        if (definitions.has(keyword.keyword)) {
+          return { ...keyword, definition: definitions.get(keyword.keyword) };
+        }
+        return keyword;
+      });
+      
+      // Save updated keywords back to episode
+      await storage.updateEpisode(id, { keywords: updatedKeywords });
+      
+      res.json({ 
+        message: `Generated ${definitions.size} new definitions`,
+        keywords: updatedKeywords,
+        newDefinitions: Object.fromEntries(definitions)
+      });
+    } catch (error: any) {
+      console.error("Error generating definitions:", error);
+      res.status(500).json({ error: error.message || "Failed to generate definitions" });
+    }
+  });
+
+  // Retroactively extract keywords for existing episodes
+  app.post("/api/episodes/:id/extract-keywords", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const episode = await storage.getEpisode(id);
+      
+      if (!episode) {
+        return res.status(404).json({ message: "Episode not found" });
+      }
+      
+      if (!episode.transcript) {
+        return res.status(400).json({ message: "No transcript found for this episode" });
+      }
+      
+      if (episode.keywords && Array.isArray(episode.keywords) && episode.keywords.length > 0) {
+        return res.json({ message: "Keywords already exist for this episode", keywords: episode.keywords });
+      }
+      
+      console.log(`Extracting keywords for episode ${id}...`);
+      
+      // Extract keywords using the existing function
+      const keywords = await extractKeywords(episode.transcript);
+      
+      // Update episode with extracted keywords
+      await storage.updateEpisode(id, { keywords });
+      
+      console.log(`Successfully extracted ${keywords.length} keywords for episode ${id}`);
+      
+      res.json({ 
+        message: `Successfully extracted ${keywords.length} keywords`,
+        keywords
+      });
+    } catch (error: any) {
+      console.error("Error extracting keywords:", error);
+      res.status(500).json({ error: error.message || "Failed to extract keywords" });
+    }
+  });
+
   return httpServer;
 }
