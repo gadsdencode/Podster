@@ -9,6 +9,7 @@ import path from "path";
 import { TsCaptionScraper } from "./ts-caption-scraper";
 import { TsAdvancedScraper } from "./ts-advanced-scraper";
 import { KeywordAnalyzer } from "./keyword-analyzer";
+import { WebSocketService } from "./websocket";
 
 dotenv.config();
 
@@ -202,7 +203,11 @@ const extractTopics = async (transcript: string) => {
 };
 
 // Function to process episodes automatically with progress tracking
-const processEpisode = async (episodeId: number, options: { generateSummary?: boolean; extractTopics?: boolean }) => {
+const processEpisode = async (
+  episodeId: number, 
+  options: { generateSummary?: boolean; extractTopics?: boolean },
+  wsService?: WebSocketService
+) => {
   try {
     const episode = await storage.getEpisode(episodeId);
     if (!episode) {
@@ -213,28 +218,34 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
     console.log(`Starting processing for episode ${episodeId} with method: ${episode.extractionMethod}`);
     
     // Step 1: Initialize processing (10%)
-    await storage.updateEpisode(episodeId, { 
-      status: "processing",
+    const update1 = { 
+      status: "processing" as const,
       progress: 10,
       currentStep: "Initializing extraction",
       processingStarted: new Date()
-    });
+    };
+    await storage.updateEpisode(episodeId, update1);
+    wsService?.emitProcessingUpdate(episodeId, update1);
     await new Promise(resolve => setTimeout(resolve, 1500));
 
     // Step 2: Extract transcript (60%)
-    await storage.updateEpisode(episodeId, { 
+    const update2 = { 
       progress: 30,
       currentStep: "Extracting transcript"
-    });
+    };
+    await storage.updateEpisode(episodeId, update2);
+    wsService?.emitProcessingUpdate(episodeId, update2);
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     const transcript = await extractTranscript(episode.videoId, episode.extractionMethod);
     const wordCount = transcript.split(/\s+/).length;
     
-    await storage.updateEpisode(episodeId, { 
+    const update3 = { 
       progress: 60,
       currentStep: "Transcript extracted successfully"
-    });
+    };
+    await storage.updateEpisode(episodeId, update3);
+    wsService?.emitProcessingUpdate(episodeId, update3);
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     let summary = null;
@@ -242,35 +253,41 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
     
     // Step 3: Generate AI content if requested
     if (options.generateSummary) {
-      await storage.updateEpisode(episodeId, { 
+      const update4 = { 
         progress: 70,
         currentStep: "Generating AI summary"
-      });
+      };
+      await storage.updateEpisode(episodeId, update4);
+      wsService?.emitProcessingUpdate(episodeId, update4);
       console.log(`Generating AI summary for episode ${episodeId}`);
       summary = await generateSummary(transcript);
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     if (options.extractTopics) {
-      await storage.updateEpisode(episodeId, { 
+      const update5 = { 
         progress: 85,
         currentStep: "Extracting key topics"
-      });
+      };
+      await storage.updateEpisode(episodeId, update5);
+      wsService?.emitProcessingUpdate(episodeId, update5);
       console.log(`Extracting AI topics for episode ${episodeId}`);
       topics = await extractTopics(transcript);
       await new Promise(resolve => setTimeout(resolve, 200));
     }
     
     // Step 4: Finalize (100%)
-    await storage.updateEpisode(episodeId, { 
+    const update6 = { 
       progress: 95,
       currentStep: "Finalizing processing"
-    });
+    };
+    await storage.updateEpisode(episodeId, update6);
+    wsService?.emitProcessingUpdate(episodeId, update6);
     await new Promise(resolve => setTimeout(resolve, 300));
     
     // Complete processing
-    await storage.updateEpisode(episodeId, {
-      status: "completed",
+    const finalUpdate = {
+      status: "completed" as const,
       transcript,
       summary,
       topics,
@@ -278,18 +295,32 @@ const processEpisode = async (episodeId: number, options: { generateSummary?: bo
       progress: 100,
       currentStep: "Processing completed",
       processingCompleted: new Date()
-    });
+    };
+    await storage.updateEpisode(episodeId, finalUpdate);
+    wsService?.emitProcessingUpdate(episodeId, finalUpdate);
 
     console.log(`Processing completed for episode ${episodeId}`);
+    
+    // Emit system updates for stats and queue
+    if (wsService) {
+      const stats = await storage.getSystemStats();
+      wsService.emitStatsUpdate(stats);
+      
+      const queueItems = await storage.getQueueItems();
+      wsService.emitQueueUpdate(queueItems);
+    }
+    
   } catch (error: any) {
     console.error(`Processing failed for episode ${episodeId}:`, error);
-    await storage.updateEpisode(episodeId, {
-      status: "failed",
+    const errorUpdate = {
+      status: "failed" as const,
       errorMessage: error.message,
       progress: 0,
       currentStep: "Processing failed",
       processingCompleted: new Date()
-    });
+    };
+    await storage.updateEpisode(episodeId, errorUpdate);
+    wsService?.emitProcessingUpdate(episodeId, errorUpdate);
   }
 };
 
@@ -417,7 +448,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await processEpisode(episode.id, {
             generateSummary: validatedData.generateSummary,
             extractTopics: validatedData.extractTopics
-          });
+          }, wsService);
         } catch (error) {
           console.error('Error starting episode processing:', error);
         }
@@ -797,8 +828,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // WebSocket for real-time updates would be implemented here
-  // For now, we'll use polling endpoints
+  // WebSocket for real-time updates - NOW IMPLEMENTED!
+  const httpServer = createServer(app);
+  const wsService = new WebSocketService(httpServer);
+  
+  // Make wsService available to routes that need it
+  app.locals.wsService = wsService;
 
   app.get("/api/processing-status/:id", async (req, res) => {
     try {
@@ -842,6 +877,5 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
   return httpServer;
 }

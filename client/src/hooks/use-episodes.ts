@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { episodesApi, statsApi } from "@/lib/api";
 import type { Episode, InsertEpisode, SystemStats, EpisodeWithProgress } from "@shared/schema";
+import { useWebSocket, type ProcessingUpdate } from "./use-websocket";
+import { useEffect } from "react";
 
 export function useEpisodes() {
   return useQuery({
@@ -86,14 +88,18 @@ export function useUpdateTranscript() {
 }
 
 export function useProcessingStatus(episodeId: number) {
-  return useQuery({
+  const { subscribeToEpisode, isConnected } = useWebSocket();
+  const queryClient = useQueryClient();
+  
+  // Fallback to polling if WebSocket not connected
+  const pollingQuery = useQuery({
     queryKey: ["/api/processing-status", episodeId],
     queryFn: () => episodesApi.getProcessingStatus(episodeId),
-    enabled: !!episodeId,
+    enabled: !!episodeId && !isConnected,
     refetchInterval: (query) => {
-      // Poll every 500ms for real-time updates when processing
+      // Poll every 2000ms for fallback when WebSocket is not available
       if (query.state.data?.status === "processing") {
-        return 500;
+        return 2000;
       }
       // Continue polling for a few seconds after completion to show final state
       if (query.state.data?.status === "completed" || query.state.data?.status === "failed") {
@@ -104,6 +110,55 @@ export function useProcessingStatus(episodeId: number) {
     staleTime: 0, // Always fetch fresh data
     gcTime: 0, // Don't cache old data
   });
+  
+  // Initial data fetch for WebSocket mode
+  const initialQuery = useQuery({
+    queryKey: ["/api/processing-status", episodeId],
+    queryFn: () => episodesApi.getProcessingStatus(episodeId),
+    enabled: !!episodeId && isConnected,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: true,
+  });
+  
+  // WebSocket real-time updates
+  useEffect(() => {
+    if (!isConnected || !episodeId) return;
+    
+    console.log('Setting up WebSocket subscription for episode:', episodeId);
+    
+    const unsubscribe = subscribeToEpisode(episodeId, (update: ProcessingUpdate) => {
+      console.log('Received WebSocket update for episode:', episodeId, update);
+      
+      // Update the query cache with real-time data
+      queryClient.setQueryData(["/api/processing-status", episodeId], (old: any) => ({
+        ...old,
+        ...update,
+        // Ensure we preserve the episode ID
+        id: episodeId
+      }));
+      
+      // Also update the episodes list if this is a significant update
+      if (update.status || update.progress === 100) {
+        queryClient.invalidateQueries({ queryKey: ["/api/episodes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/episodes", "recent"] });
+      }
+    });
+    
+    return unsubscribe;
+  }, [episodeId, isConnected, subscribeToEpisode, queryClient]);
+  
+  // Return WebSocket data if connected, otherwise polling data
+  if (isConnected) {
+    const cachedData = queryClient.getQueryData(["/api/processing-status", episodeId]) as EpisodeWithProgress | undefined;
+    return {
+      ...initialQuery,
+      data: cachedData || initialQuery.data,
+      isLoading: !cachedData && initialQuery.isLoading,
+    };
+  }
+  
+  return pollingQuery;
 }
 
 export function useProcessEpisode() {
@@ -127,10 +182,31 @@ export function useProcessEpisode() {
 }
 
 export function useSystemStats() {
+  const { subscribeToSystem, isConnected } = useWebSocket();
+  const queryClient = useQueryClient();
+  
+  // WebSocket real-time updates for stats
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    console.log('Setting up WebSocket subscription for system stats');
+    
+    const unsubscribe = subscribeToSystem((event: string, data: any) => {
+      console.log('Received system update:', event, data);
+      
+      if (event === 'stats-updated') {
+        // Update the stats cache with real-time data
+        queryClient.setQueryData(["/api/stats"], data);
+      }
+    });
+    
+    return unsubscribe;
+  }, [isConnected, subscribeToSystem, queryClient]);
+  
   return useQuery({
     queryKey: ["/api/stats"],
     queryFn: statsApi.getSystemStats,
-    refetchInterval: 5000, // Refresh more frequently to catch updates
+    refetchInterval: isConnected ? false : 5000, // Only poll if WebSocket not connected
     staleTime: 0, // Always consider data stale
     refetchOnMount: 'always', // Always refetch when component mounts
   });
