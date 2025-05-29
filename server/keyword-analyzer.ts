@@ -143,7 +143,7 @@ export class KeywordAnalyzer {
     
     try {
       const response = await this.openai.chat.completions.create({
-        model: "gpt-3.5-turbo", // Using a faster model
+        model: "gpt-4o-mini", // Using a faster model
         messages: [
           {
             role: "system",
