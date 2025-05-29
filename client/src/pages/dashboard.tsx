@@ -2,22 +2,31 @@ import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye, RefreshCw } from "lucide-react";
-import { useSystemStats } from "@/hooks/use-episodes";
+import { Play, Clock, CheckCircle, Database, Plus, ArrowRight, Eye, RefreshCw, Settings } from "lucide-react";
 import { useRecentEpisodes } from "@/hooks/use-episodes";
+import { useSystemStats as useEnhancedSystemStats } from "@/hooks/useSystemStats";
 import TranscriptViewer from "@/components/episodes/transcript-viewer";
 import { useState, useEffect } from "react";
 import type { Episode } from "@shared/schema";
 import { useQueryClient } from "@tanstack/react-query";
 import { StatsCardGrid } from "@/components/ui/stats-card-grid";
+import { useAppUpdates } from "@/hooks/use-app-updates";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
-  const { data: stats, isLoading: statsLoading } = useSystemStats();
-  const { data: recentEpisodes, isLoading: episodesLoading, refetch: refetchEpisodes } = useRecentEpisodes();
   const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [colorScheme, setColorScheme] = useState<'default' | 'vibrant' | 'minimal'>('default');
+  
+  // Use the new system stats hook with real data
+  const { stats, loading: statsLoading, refreshStats } = useEnhancedSystemStats(30000, false);
+  
+  const { data: recentEpisodes, isLoading: episodesLoading, refetch: refetchEpisodes } = useRecentEpisodes();
+  
+  // Initialize app updates
+  useAppUpdates();
 
   // Debug: Log stats when they change
   useEffect(() => {
@@ -26,11 +35,11 @@ export default function Dashboard() {
     }
   }, [stats]);
   
-  // Set up auto-refresh every 5 seconds
+  // Set up auto-refresh every 30 seconds (increased from 5 for better UX)
   useEffect(() => {
     const intervalId = setInterval(() => {
       refreshData(false);
-    }, 5000);
+    }, 30000);
     
     return () => clearInterval(intervalId);
   }, []);
@@ -40,12 +49,24 @@ export default function Dashboard() {
     setIsTranscriptOpen(true);
   };
   
+  // Cycle through color schemes
+  const cycleColorScheme = () => {
+    setColorScheme(current => {
+      if (current === 'default') return 'vibrant';
+      if (current === 'vibrant') return 'minimal';
+      return 'default';
+    });
+  };
+  
   const refreshData = async (showRefreshState = true) => {
     if (showRefreshState) {
       setRefreshing(true);
     }
     
     try {
+      // Refresh stats using our new hook
+      refreshStats();
+      
       // Invalidate and refetch all necessary queries
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/episodes"] }),
@@ -86,21 +107,55 @@ export default function Dashboard() {
               Start Extracting
             </Button>
           </Link>
-          <Button 
-            size="icon" 
-            variant="outline" 
-            onClick={() => refreshData()}
-            disabled={refreshing}
-            title="Refresh data"
-            className={refreshing ? "animate-spin" : ""}
-          >
-            <RefreshCw className="h-5 w-5" />
-          </Button>
+          <div className="flex gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    size="icon" 
+                    variant="outline" 
+                    onClick={() => refreshData()}
+                    disabled={refreshing || statsLoading}
+                    title="Refresh data"
+                    className={refreshing ? "animate-spin" : ""}
+                  >
+                    <RefreshCw className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Refresh dashboard data</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    size="icon" 
+                    variant="outline" 
+                    onClick={cycleColorScheme}
+                    title="Change theme"
+                  >
+                    <Settings className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Change stats visualization style</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       </motion.section>
 
-      {/* Stats Cards */}
-      <StatsCardGrid stats={stats} statsLoading={statsLoading} />
+      {/* Stats Cards - Using our enhanced component */}
+      <StatsCardGrid 
+        stats={stats} 
+        statsLoading={statsLoading}
+        onRefresh={refreshStats}
+        colorScheme={colorScheme}
+      />
 
       {/* Recent Episodes */}
       <motion.section

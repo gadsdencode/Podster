@@ -139,11 +139,23 @@ export type SystemStats = {
   processingQueue: number;
   successRate: number;
   averageProcessingTime: string;
-  totalStorage: string;
+  totalWordCount: string;
   dailyProcessed: number;
   methodDistribution: {
     caption: number;
     scraping: number;
     audio: number;
   };
+  trends?: {
+    totalEpisodes?: number;
+    successRate?: number;
+    processingTime?: number;
+    wordCount?: number;
+  };
+  history?: {
+    totalEpisodes?: number[];
+    processingTime?: number[];
+    wordCount?: number[];
+  };
+  lastUpdated?: string;
 };

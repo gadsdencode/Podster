@@ -3,6 +3,8 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { NotificationProvider } from "@/lib/notification-context";
+import { useEpisodeNotifications } from "@/hooks/use-episode-notifications";
 import MainLayout from "@/components/layout/main-layout";
 import Dashboard from "@/pages/dashboard";
 import AddEpisode from "@/pages/add-episode";
@@ -12,6 +14,12 @@ import Admin from "@/pages/admin";
 import AdminLogin from "@/pages/admin-login";
 import NotFound from "@/pages/not-found";
 import { BrowserRouter } from "react-router-dom";
+
+// Component to initialize global hooks
+function GlobalHooks() {
+  useEpisodeNotifications();
+  return null;
+}
 
 function Router() {
   return (
@@ -34,8 +42,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <TooltipProvider>
-          <Toaster />
-          <Router />
+          <NotificationProvider>
+            <GlobalHooks />
+            <Toaster />
+            <Router />
+          </NotificationProvider>
         </TooltipProvider>
       </BrowserRouter>
     </QueryClientProvider>

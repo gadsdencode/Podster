@@ -73,6 +73,7 @@
 @layer utilities {
   .glassmorphism {
     background: rgba(255, 255, 255, 0.05);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
@@ -186,6 +187,23 @@
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+.animate-spin-once {
+  animation: spin 1s linear;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 /* Progress bar animations */

@@ -707,9 +707,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics endpoints
   app.get("/api/stats", async (req, res) => {
     try {
+      console.log("Stats API endpoint called");
       const stats = await storage.getSystemStats();
+      console.log("Stats returned from storage:", JSON.stringify(stats, null, 2));
       res.json(stats);
     } catch (error: any) {
+      console.error("Error fetching stats:", error);
       res.status(500).json({ message: error.message });
     }
   });
