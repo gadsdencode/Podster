@@ -6,6 +6,15 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { useProcessingStatus } from "@/hooks/use-episodes";
 import { Activity, X, CheckCircle, AlertCircle, Clock, FileText, Brain, Zap } from "lucide-react";
+import { ReactNode } from "react";
+
+// Helper function to safely check and convert unknown values to ReactNode
+const safeRender = (value: unknown): ReactNode => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return String(value);
+  return null;
+};
 
 interface ProcessingStatusProps {
   episodeId: number;
@@ -209,10 +218,10 @@ export default function ProcessingStatus({ episodeId, onComplete }: ProcessingSt
                 <span className="text-emerald-400">✓ Transcript extracted</span>
                 <span className="text-muted-foreground">{status.wordCount} words</span>
               </div>
-              {status.summary && (
+              {status.summary && typeof status.summary === 'string' && (
                 <div className="text-sm text-emerald-400">✓ Summary generated</div>
               )}
-              {status.topics && status.topics.length > 0 && (
+              {Array.isArray(status.topics) && status.topics.length > 0 && (
                 <div className="text-sm text-emerald-400">✓ Topics extracted</div>
               )}
             </div>

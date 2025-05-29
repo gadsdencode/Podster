@@ -4,6 +4,15 @@ import { Badge } from "@/components/ui/badge";
 import { Clock, User, FileText } from "lucide-react";
 import HighlightedTranscript from "./highlighted-transcript";
 import type { Episode } from "@/../../shared/schema";
+import { ReactNode } from "react";
+
+// Helper function to safely check and convert unknown values to ReactNode
+const safeRender = (value: unknown): ReactNode => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return String(value);
+  return null;
+};
 
 interface TranscriptViewerProps {
   episode: Episode | null;
@@ -68,36 +77,46 @@ export default function TranscriptViewer({ episode, isOpen, onClose }: Transcrip
           <ScrollArea className="h-[60vh] pr-4">
             <div className="space-y-6">
               {/* AI Summary */}
-              {episode.summary && (
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-4 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
-                  <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2">
-                    🤖 AI Summary
-                  </h4>
-                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {String(episode.summary)}
-                  </p>
-                </div>
-              )}
+              {(() => {
+                if (typeof episode.summary === 'string' && episode.summary.trim() !== '') {
+                  return (
+                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-4 rounded-lg border border-blue-200/50 dark:border-blue-700/50">
+                      <h4 className="font-medium text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2">
+                        🤖 AI Summary
+                      </h4>
+                      <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {episode.summary}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Topics */}
-              {episode.topics && Array.isArray(episode.topics) && episode.topics.length > 0 && (
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-lg border border-green-200/50 dark:border-green-700/50">
-                  <h4 className="font-medium text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
-                    🏷️ Key Topics
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {episode.topics.map((topic: string, index: number) => (
-                      <Badge 
-                        key={index} 
-                        variant="outline" 
-                        className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-600"
-                      >
-                        {topic}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {(() => {
+                if (episode.topics && Array.isArray(episode.topics) && episode.topics.length > 0) {
+                  return (
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 rounded-lg border border-green-200/50 dark:border-green-700/50">
+                      <h4 className="font-medium text-green-900 dark:text-green-300 mb-3 flex items-center gap-2">
+                        🏷️ Key Topics
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {episode.topics.map((topic: string, index: number) => (
+                          <Badge 
+                            key={index} 
+                            variant="outline" 
+                            className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-600"
+                          >
+                            {topic}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Full Transcript with AI Keyword Highlighting */}
               <div className="bg-white/50 dark:bg-gray-800/50 p-6 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
@@ -105,15 +124,18 @@ export default function TranscriptViewer({ episode, isOpen, onClose }: Transcrip
                   📝 Full Transcript
                 </h4>
                 
-                {episode.transcript ? (
-                  <HighlightedTranscript transcript={episode.transcript} />
-                ) : (
-                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                    <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p>Transcript not available</p>
-                    <p className="text-sm">Processing may still be in progress</p>
-                  </div>
-                )}
+                {(() => {
+                  if (typeof episode.transcript === 'string' && episode.transcript) {
+                    return <HighlightedTranscript transcript={episode.transcript} />;
+                  }
+                  return (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                      <p>Transcript not available</p>
+                      <p className="text-sm">Processing may still be in progress</p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </ScrollArea>
