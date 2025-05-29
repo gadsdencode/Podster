@@ -7,11 +7,22 @@ import dotenv from 'dotenv';
 import { eq } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
+// Get the directory name
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure we have a database URL
+if (!process.env.DATABASE_PUBLIC_URL) {
+  console.error("DATABASE_PUBLIC_URL not set");
+  process.exit(1);
+}
+
 // For migration, we need a separate connection
-const migrationClient = postgres(process.env.DATABASE_URL!, { max: 1 });
+const migrationClient = postgres(process.env.DATABASE_PUBLIC_URL!, { max: 1 });
 
 async function main() {
   try {
@@ -67,4 +78,49 @@ async function main() {
   }
 }
 
-main(); 
+// Add function to create a new migration
+const createEnhancedTranscriptMigration = async () => {
+  try {
+    console.log("Creating migration for enhancedTranscript field...");
+    
+    // Create a temporary connection to the database
+    const sql = postgres(process.env.DATABASE_PUBLIC_URL!, { max: 1 });
+    
+    // Create the migration SQL
+    const migrationSQL = `
+      -- Add enhancedTranscript and hasEnhancedTranscript columns to episodes table
+      ALTER TABLE episodes ADD COLUMN IF NOT EXISTS enhanced_transcript TEXT;
+      ALTER TABLE episodes ADD COLUMN IF NOT EXISTS has_enhanced_transcript BOOLEAN DEFAULT FALSE;
+    `;
+    
+    // Create the migration file
+    const timestamp = new Date().toISOString().replace(/[-T:\.Z]/g, "").substring(0, 14);
+    const migrationName = `${timestamp}_add_enhanced_transcript`;
+    const migrationPath = path.join(__dirname, "../migrations", migrationName);
+    
+    // Ensure migrations directory exists
+    const fs = await import("fs/promises");
+    await fs.mkdir(path.join(__dirname, "../migrations"), { recursive: true });
+    
+    // Write the migration file
+    await fs.writeFile(`${migrationPath}.sql`, migrationSQL);
+    
+    console.log(`Migration file created: migrations/${migrationName}.sql`);
+    console.log("Now run 'npm run migrate' to apply the migration.");
+    
+    await sql.end();
+    process.exit(0);
+  } catch (error) {
+    console.error("Failed to create migration:", error);
+    process.exit(1);
+  }
+};
+
+// Check command line arguments
+const command = process.argv[2];
+
+if (command === "create-transcript-migration") {
+  createEnhancedTranscriptMigration();
+} else {
+  main();
+} 

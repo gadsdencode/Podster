@@ -413,4 +413,196 @@ export class TsAdvancedScraper {
     
     return text.replace(/&amp;|&lt;|&gt;|&quot;|&#39;|&nbsp;|\\u0026/g, match => entities[match]);
   }
+
+  private processTranscript(captionText: string): string {
+    if (!captionText || captionText.length < 50) {
+      return '';
+    }
+    
+    // Parse the transcript if it's already in a structured format
+    const timestampMatches = captionText.match(/\d+:\d+/g);
+    const hasTimestamps = timestampMatches && timestampMatches.length > 5;
+    
+    if (hasTimestamps) {
+      // The transcript already has timestamps, return it formatted
+      return this.formatTimestampedTranscript(captionText);
+    }
+    
+    // For plain text, add paragraph breaks at natural points
+    const sentences = captionText.split(/(?<=[.!?])\s+/);
+    const paragraphs: string[] = [];
+    let currentParagraph: string[] = [];
+    let currentLength = 0;
+    
+    // Function to detect natural paragraph breaks
+    const isNaturalBreak = (sentence: string, index: number): boolean => {
+      // End of a significant thought
+      const isEndOfThought = sentence.endsWith('.') || sentence.endsWith('!') || sentence.endsWith('?');
+      
+      // New thought starting with transition words
+      const isNewThought = index > 0 && 
+        (sentence.startsWith('But') || sentence.startsWith('So') || sentence.startsWith('And') || 
+         sentence.startsWith('Well') || sentence.startsWith('Now') || sentence.startsWith('I ') || 
+         sentence.startsWith('We ') || sentence.startsWith('You '));
+      
+      // Topic change indicated by certain phrases
+      const isTopicChange = sentence.includes('next topic') || 
+                            sentence.includes('moving on') || 
+                            sentence.includes('let\'s talk about') || 
+                            sentence.includes('another thing');
+      
+      return (isEndOfThought && isNewThought) || isTopicChange;
+    };
+    
+    for (let i = 0; i < sentences.length; i++) {
+      const sentence = sentences[i];
+      
+      // Check if this sentence might indicate a natural paragraph break
+      if (i > 0 && isNaturalBreak(sentence, i) && currentParagraph.length > 0) {
+        // Complete the current paragraph
+        const paragraphText = currentParagraph.join(' ');
+        const estimatedMinute = Math.floor(paragraphs.length * 1.5);
+        const timestamp = `[${estimatedMinute}:00]`;
+        
+        paragraphs.push(`${timestamp} ${paragraphText}`);
+        
+        // Start a new paragraph
+        currentParagraph = [sentence];
+        currentLength = sentence.length;
+        continue;
+      }
+      
+      currentParagraph.push(sentence);
+      currentLength += sentence.length;
+      
+      // Create paragraph breaks after a reasonable amount of text (200-300 chars)
+      // or after several sentences with ending punctuation
+      const completedThought = sentence.endsWith('.') || sentence.endsWith('?') || sentence.endsWith('!');
+      if ((currentLength > 250 && completedThought) || currentParagraph.length >= 4) {
+        // Add a simulated timestamp to the paragraph
+        const paragraphText = currentParagraph.join(' ');
+        // We don't have real timestamps, so we'll use an estimated position
+        const estimatedMinute = Math.floor(paragraphs.length * 1.5);
+        const timestamp = `[${estimatedMinute}:00]`;
+        
+        paragraphs.push(`${timestamp} ${paragraphText}`);
+        currentParagraph = [];
+        currentLength = 0;
+      }
+    }
+    
+    // Add any remaining sentences as the final paragraph
+    if (currentParagraph.length > 0) {
+      const paragraphText = currentParagraph.join(' ');
+      const estimatedMinute = Math.floor(paragraphs.length * 1.5);
+      const timestamp = `[${estimatedMinute}:00]`;
+      
+      paragraphs.push(`${timestamp} ${paragraphText}`);
+    }
+    
+    // Join paragraphs with standard double newlines
+    return paragraphs.join('\n\n');
+  }
+  
+  private formatTimestampedTranscript(captionText: string): string {
+    // Split by common timestamp patterns
+    const segments = captionText.split(/\n*\d+:\d+\s*/);
+    const timestamps = captionText.match(/\d+:\d+/g) || [];
+    
+    // Reconstruct with our preferred format
+    const paragraphs: string[] = [];
+    
+    for (let i = 0; i < Math.min(segments.length - 1, timestamps.length); i++) {
+      if (segments[i + 1].trim().length > 0) {
+        paragraphs.push(`[${timestamps[i]}] ${segments[i + 1].trim()}`);
+      }
+    }
+    
+    // Join with standard double newlines (single-speaker format)
+    return paragraphs.join('\n\n');
+  }
+
+  private async extractFromCaptionTracks(videoId: string): Promise<string | null> {
+    try {
+      // Get video page to extract caption info
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const response = await axios.get(videoUrl, {
+        headers: {
+          'User-Agent': this.userAgent,
+          'Accept-Language': 'en-US,en;q=0.9'
+        },
+        timeout: 10000
+      });
+      
+      if (response.status !== 200) {
+        return null;
+      }
+      
+      const html = response.data;
+      
+      // Extract player configuration
+      const playerConfigMatch = html.match(/ytInitialPlayerResponse\s*=\s*({.+?});/);
+      
+      if (!playerConfigMatch) {
+        return null;
+      }
+      
+      const playerConfig = JSON.parse(playerConfigMatch[1]);
+      
+      // Extract caption tracks
+      const captions = playerConfig.captions;
+      if (!captions) {
+        return null;
+      }
+      
+      const captionTracks = captions.playerCaptionsTracklistRenderer?.captionTracks || [];
+      
+      if (captionTracks.length === 0) {
+        return null;
+      }
+      
+      // Find English caption track
+      let englishTrack = captionTracks.find((track: any) => 
+        track.languageCode && track.languageCode.startsWith('en') && track.kind !== 'asr'
+      );
+      
+      // Fall back to auto-generated if no manual English track
+      if (!englishTrack) {
+        englishTrack = captionTracks.find((track: any) => 
+          track.languageCode && track.languageCode.startsWith('en')
+        );
+      }
+      
+      // Fall back to any track if no English track
+      if (!englishTrack && captionTracks.length > 0) {
+        englishTrack = captionTracks[0];
+      }
+      
+      if (!englishTrack || !englishTrack.baseUrl) {
+        return null;
+      }
+      
+      // Download caption file
+      const captionResponse = await axios.get(englishTrack.baseUrl, {
+        headers: { 'User-Agent': this.userAgent },
+        timeout: 10000
+      });
+      
+      if (captionResponse.status !== 200) {
+        return null;
+      }
+      
+      const captionContent = captionResponse.data;
+      
+      // Parse caption content
+      const xmlText = this.parseXmlCaptions(captionContent);
+      if (!xmlText || xmlText.length < 50) return null;
+      
+      // Process the transcript to add formatting
+      return this.processTranscript(xmlText);
+    } catch (error) {
+      console.error(`Error in caption track extraction: ${error instanceof Error ? error.message : String(error)}`);
+      return null;
+    }
+  }
 } 

@@ -163,6 +163,302 @@ const generateSummary = async (transcript: string) => {
   }
 };
 
+// New function to enhance transcript readability with improved efficiency
+const enhanceTranscriptReadability = async (transcript: string): Promise<string> => {
+  try {
+    // Skip processing if transcript is too short
+    if (!transcript || transcript.length < 50) {
+      console.log('Transcript too short, skipping enhancement');
+      return transcript;
+    }
+
+    console.log(`Enhancing transcript readability (length: ${transcript.length} chars)...`);
+    
+    // For large transcripts, process in chunks
+    if (transcript.length > 4000) {
+      console.log(`Large transcript detected (${transcript.length} chars), using chunk processing`);
+      return processTranscriptInChunks(transcript);
+    }
+    
+    // For smaller transcripts, process directly
+    console.log('Processing transcript in single request');
+    return await enhanceChunkWithAI(transcript);
+  } catch (error) {
+    console.error('Error in enhanceTranscriptReadability:', error);
+    // Return original transcript if enhancement fails
+    return transcript;
+  }
+};
+
+// Optimized chunking with better token management and no recursion
+async function processTranscriptInChunks(transcript: string): Promise<string> {
+  try {
+    console.log('Starting chunk-based transcript processing...');
+    
+    // Calculate approximate tokens (rough estimate: 4 chars per token)
+    const estimatedTokens = Math.ceil(transcript.length / 4);
+    console.log(`Estimated total tokens: ${estimatedTokens}`);
+    
+    // Define max tokens per chunk (stay well under the 4k token limit)
+    const MAX_TOKENS_PER_CHUNK = 3000;
+    
+    // Split into paragraphs first
+    const paragraphs = transcript.split(/\n\n+/);
+    console.log(`Split transcript into ${paragraphs.length} paragraphs`);
+    
+    // Initialize chunks array
+    const chunks: string[] = [];
+    let currentChunk = '';
+    let currentTokenCount = 0;
+    
+    // Build chunks based on token count
+    for (const paragraph of paragraphs) {
+      const paragraphTokens = Math.ceil(paragraph.length / 4);
+      
+      // If adding this paragraph would exceed our chunk size, start a new chunk
+      if (currentTokenCount + paragraphTokens > MAX_TOKENS_PER_CHUNK && currentChunk.length > 0) {
+        chunks.push(currentChunk);
+        currentChunk = paragraph;
+        currentTokenCount = paragraphTokens;
+      } else {
+        // Otherwise add to current chunk
+        currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+        currentTokenCount += paragraphTokens;
+      }
+    }
+    
+    // Don't forget the last chunk
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+    
+    console.log(`Created ${chunks.length} chunks for processing`);
+    
+    // Process chunks with controlled concurrency
+    const enhancedChunks: string[] = [];
+    const BATCH_SIZE = 2; // Process 2 chunks at a time to avoid rate limits
+    
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+      console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(chunks.length/BATCH_SIZE)}`);
+      
+      // Create a batch of promises
+      const batchPromises = chunks
+        .slice(i, i + BATCH_SIZE)
+        .map((chunk, index) => {
+          console.log(`Processing chunk ${i + index + 1}/${chunks.length} (${chunk.length} chars)...`);
+          return enhanceChunkWithAI(chunk as string)
+            .then(enhancedChunk => {
+              console.log(`Chunk ${i + index + 1} processed successfully`);
+              return enhancedChunk;
+            })
+            .catch(error => {
+              console.error(`Error processing chunk ${i + index + 1}:`, error);
+              // Return original chunk on error
+              return chunk as string;
+            });
+        });
+      
+      // Wait for all chunks in this batch to complete
+      const batchResults = await Promise.all(batchPromises);
+      enhancedChunks.push(...batchResults);
+      
+      // Add a small delay between batches to avoid rate limiting
+      if (i + BATCH_SIZE < chunks.length) {
+        console.log('Waiting between batches to avoid rate limiting...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Join enhanced chunks with paragraph breaks
+    const result = enhancedChunks.join('\n\n');
+    console.log(`Successfully enhanced transcript in chunks. Final length: ${result.length} chars`);
+    return result;
+  } catch (error) {
+    console.error('Error in chunk processing:', error);
+    // Return original if batch processing fails
+    return transcript;
+  }
+}
+
+// Direct AI enhancement for a single chunk, no recursion
+async function enhanceChunkWithAI(chunk: string): Promise<string> {
+  try {
+    // Skip tiny chunks
+    if (!chunk || chunk.length < 50) {
+      return chunk;
+    }
+    
+    // Calculate approximate tokens for logging
+    const estimatedTokens = Math.ceil(chunk.length / 4);
+    console.log(`Enhancing chunk with ~${estimatedTokens} tokens`);
+    
+    // Add retry mechanism
+    let retries = 0;
+    const MAX_RETRIES = 3;
+    let lastError: Error | null = null;
+    
+    // Fallback options for models
+    const models = [
+      'gpt-3.5-turbo-16k',  // Try 16k model first
+      'gpt-3.5-turbo',      // Fallback to standard model
+      'gpt-4'               // Last resort (if configured)
+    ];
+    
+    // Try each model in sequence if needed
+    for (const model of models) {
+      // Skip gpt-4 if not explicitly configured
+      if (model.includes('gpt-4') && !process.env.USE_GPT4_FALLBACK) {
+        continue;
+      }
+      
+      // Reset retries for each model
+      retries = 0;
+      
+      while (retries < MAX_RETRIES) {
+        try {
+          console.log(`Attempting to enhance chunk with model: ${model}, attempt ${retries + 1}/${MAX_RETRIES}`);
+          
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: model,
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are an expert at improving the readability of automatically generated transcripts.
+Your task is to enhance readability by:
+1. Fixing capitalization and punctuation
+2. Removing filler words and redundancies
+3. Correcting obvious grammar mistakes
+4. Maintaining timestamps in [MM:SS] format at paragraph starts
+5. Creating well-structured paragraphs
+6. Preserving the original meaning and all important information
+
+IMPORTANT: 
+- Keep all original timestamps in [MM:SS] format
+- Maintain paragraph breaks (denoted by double newlines)
+- Don't change the factual content
+- Don't add information that isn't present
+- Preserve any speaker indicators`
+                },
+                {
+                  role: 'user',
+                  content: `Please enhance the readability of this transcript while keeping all timestamps and paragraph breaks:\n\n${chunk}`
+                }
+              ],
+              max_tokens: model.includes('16k') ? 4000 : 2000, // Adjust based on model
+              temperature: 0.3,
+            }),
+          });
+
+          // Handle various error responses
+          if (!response.ok) {
+            const status = response.status;
+            
+            // Get detailed error information
+            let errorDetail = '';
+            try {
+              const errorData = await response.json();
+              errorDetail = errorData.error?.message || JSON.stringify(errorData);
+            } catch (e) {
+              errorDetail = await response.text() || `Status ${status}`;
+            }
+            
+            // Handle specific error codes
+            if (status === 429) {
+              throw new Error(`Rate limit exceeded: ${errorDetail}`);
+            } else if (status === 400 && errorDetail.includes('tokens')) {
+              throw new Error(`Token limit exceeded: ${errorDetail}`);
+            } else if (status >= 500) {
+              throw new Error(`OpenAI server error: ${errorDetail}`);
+            } else {
+              throw new Error(`OpenAI API error (${status}): ${errorDetail}`);
+            }
+          }
+
+          const data = await response.json();
+          const enhancedChunk = data.choices[0]?.message?.content;
+          
+          if (!enhancedChunk) {
+            throw new Error('No response content from OpenAI');
+          }
+          
+          console.log(`Successfully enhanced chunk with model: ${model}`);
+          return enhancedChunk;
+        } catch (error) {
+          lastError = error as Error;
+          retries++;
+          
+          const errorMessage = (error as Error).message || 'Unknown error';
+          console.log(`Attempt ${retries}/${MAX_RETRIES} with model ${model} failed: ${errorMessage}`);
+          
+          // Determine if we should retry or try next model
+          if (
+            errorMessage.includes('rate limit') || 
+            errorMessage.includes('server error') || 
+            errorMessage.includes('timeout')
+          ) {
+            // These errors warrant a retry with exponential backoff
+            const delay = retries * 2000;
+            console.log(`Retrying in ${delay / 1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else if (errorMessage.includes('token limit')) {
+            // For token limit issues, break and try next model
+            console.log(`Token limit issue with ${model}, trying next model...`);
+            break;
+          } else {
+            // For other errors, retry with shorter delay
+            const delay = retries * 1000;
+            console.log(`Retrying in ${delay / 1000} seconds...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+      
+      // If we made it here and have exceeded retries, try next model
+      console.log(`All attempts with model ${model} failed, trying next model...`);
+    }
+    
+    // If we got here, all models and retries failed
+    console.error('All enhancement attempts failed after trying multiple models:', lastError);
+    
+    // Simple fallback: basic cleanup without AI
+    console.log('Performing basic cleanup as fallback');
+    return performBasicCleanup(chunk);
+  } catch (error) {
+    console.error('Error in AI enhancement:', error);
+    // Return original chunk if enhancement fails
+    return chunk;
+  }
+}
+
+// Basic cleanup function as fallback for when AI enhancement fails
+function performBasicCleanup(text: string): string {
+  try {
+    // Implement some basic cleanup rules
+    return text
+      // Fix capitalization after periods
+      .replace(/\. [a-z]/g, match => match.toUpperCase())
+      // Remove filler words
+      .replace(/(\s|^)(um|uh|like,|you know,|i mean,|basically,|actually,|so,)(\s|$)/gi, ' ')
+      // Fix double spaces
+      .replace(/\s{2,}/g, ' ')
+      // Fix spacing after punctuation
+      .replace(/([.!?])\s*([a-zA-Z])/g, '$1 $2')
+      // Preserve timestamp format [MM:SS]
+      .replace(/\[(\d+:\d+)\]/g, match => match.toUpperCase())
+      // Trim whitespace
+      .trim();
+  } catch (e) {
+    console.error('Error in basic cleanup:', e);
+    return text;
+  }
+}
+
 const extractTopics = async (transcript: string) => {
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -839,6 +1135,263 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Enhanced transcript API
+  app.post("/api/enhance-transcript", async (req, res) => {
+    try {
+      const { transcript } = req.body;
+      
+      if (!transcript) {
+        return res.status(400).json({ message: "Transcript is required" });
+      }
+      
+      const enhancedTranscript = await enhanceTranscriptReadability(transcript);
+      
+      res.status(200).json({ 
+        success: true,
+        original: transcript,
+        enhanced: enhancedTranscript
+      });
+    } catch (error: any) {
+      console.error('Error in enhance-transcript endpoint:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message,
+        original: req.body.transcript
+      });
+    }
+  });
+  
+  // Update episode endpoint with enhancement option
+  app.post("/api/episodes/:id/enhance", requireAdminAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const episodeId = parseInt(id);
+      
+      if (isNaN(episodeId)) {
+        return res.status(400).json({ message: "Invalid episode ID" });
+      }
+      
+      const episode = await storage.getEpisode(episodeId);
+      
+      if (!episode) {
+        return res.status(404).json({ message: "Episode not found" });
+      }
+      
+      if (!episode.transcript) {
+        return res.status(400).json({ message: "Episode has no transcript to enhance" });
+      }
+      
+      // Update the episode status to processing
+      await storage.updateEpisode(episodeId, {
+        status: "processing",
+        progress: 5,
+        currentStep: "Preparing transcript enhancement"
+      });
+      
+      // Return immediate response to client
+      res.status(202).json({ 
+        success: true,
+        message: "Transcript enhancement started",
+        episodeId
+      });
+      
+      // Process the enhancement in the background
+      (async () => {
+        try {
+          // Extract word count for progress calculation
+          const transcript = episode.transcript || '';
+          const wordCount = transcript.split(/\s+/).length;
+          const paragraphCount = transcript.split(/\n\n+/).length;
+          
+          // Update with more accurate progress information
+          await storage.updateEpisode(episodeId, {
+            progress: 10,
+            currentStep: `Analyzing transcript (${wordCount.toLocaleString()} words in ${paragraphCount} paragraphs)`
+          });
+          
+          // Analyze transcript size to provide better progress estimates
+          if (transcript.length > 20000) {
+            await storage.updateEpisode(episodeId, {
+              progress: 15,
+              currentStep: "Large transcript detected, preparing chunked processing"
+            });
+          }
+          
+          // Register progress update callback
+          const updateProgress = async (percent: number, message: string) => {
+            console.log(`Progress update for episode ${episodeId}: ${percent}% - ${message}`);
+            await storage.updateEpisode(episodeId, {
+              progress: Math.min(Math.max(Math.round(percent), 10), 95), // Clamp between 10-95%
+              currentStep: message
+            });
+          };
+          
+          // Cache check - verify if we already started enhancing but didn't complete
+          if (episode.enhancedTranscript && episode.enhancedTranscript.length > 100) {
+            console.log(`Using cached partial enhancement for episode ${episodeId}`);
+            await updateProgress(30, "Resuming from previously cached enhancement");
+          } else {
+            await updateProgress(20, "Starting enhancement process");
+          }
+          
+          // Custom version of transcript chunking that reports progress
+          let enhancedTranscript: string;
+          
+          if (transcript.length > 4000) {
+            // For longer transcripts, we need a custom approach that reports progress
+            const chunks: string[] = [];
+            const paragraphs = transcript.split(/\n\n+/);
+            console.log(`Processing ${paragraphs.length} paragraphs in chunks`);
+            
+            // Build chunks based on token count (approx 4 chars per token)
+            const MAX_TOKENS_PER_CHUNK = 3000;
+            let currentChunk = '';
+            let currentTokenCount = 0;
+            
+            for (const paragraph of paragraphs) {
+              const paragraphTokens = Math.ceil(paragraph.length / 4);
+              
+              if (currentTokenCount + paragraphTokens > MAX_TOKENS_PER_CHUNK && currentChunk.length > 0) {
+                chunks.push(currentChunk);
+                currentChunk = paragraph;
+                currentTokenCount = paragraphTokens;
+              } else {
+                currentChunk += (currentChunk ? '\n\n' : '') + paragraph;
+                currentTokenCount += paragraphTokens;
+              }
+            }
+            
+            if (currentChunk) {
+              chunks.push(currentChunk);
+            }
+            
+            console.log(`Split transcript into ${chunks.length} chunks for processing`);
+            await updateProgress(25, `Preparing to process transcript in ${chunks.length} chunks`);
+            
+            // Process chunks with progress updates
+            const enhancedChunks: string[] = [];
+            const BATCH_SIZE = 2; // Process 2 chunks at a time
+            
+            for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+              const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+              const totalBatches = Math.ceil(chunks.length / BATCH_SIZE);
+              const progressPercent = 25 + (70 * (i / chunks.length));
+              
+              await updateProgress(
+                progressPercent, 
+                `Processing batch ${batchNumber}/${totalBatches} (${Math.round(progressPercent)}%)`
+              );
+              
+              // Process current batch
+              const batchPromises = chunks
+                .slice(i, i + BATCH_SIZE)
+                .map((chunk, index) => {
+                  return enhanceChunkWithAI(chunk as string)
+                    .catch(error => {
+                      console.error(`Error processing chunk ${i + index + 1}:`, error);
+                      return chunk as string; // Return original on error
+                    });
+                });
+              
+              const batchResults = await Promise.all(batchPromises);
+              enhancedChunks.push(...batchResults);
+              
+              // Update progress after each batch
+              const newProgressPercent = 25 + (70 * ((i + BATCH_SIZE) / chunks.length));
+              await updateProgress(
+                newProgressPercent,
+                `Completed batch ${batchNumber}/${totalBatches} (${Math.round(newProgressPercent)}%)`
+              );
+              
+              // Small delay between batches
+              if (i + BATCH_SIZE < chunks.length) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+            
+            // Join enhanced chunks
+            enhancedTranscript = enhancedChunks.join('\n\n');
+          } else {
+            // For shorter transcripts, use the standard approach
+            await updateProgress(30, "Processing transcript");
+            enhancedTranscript = await enhanceTranscriptReadability(transcript);
+            await updateProgress(80, "Enhancement completed, finalizing");
+          }
+          
+          // Update progress to 90%
+          await updateProgress(90, "Enhancement complete, saving results");
+          
+          // Small delay to ensure database write completes
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Update the episode with the enhanced transcript
+          await storage.updateEpisode(episodeId, {
+            enhancedTranscript,
+            status: "completed",
+            progress: 100,
+            currentStep: "Transcript enhancement completed successfully",
+            hasEnhancedTranscript: true
+          });
+          
+          console.log(`Successfully enhanced transcript for episode ${episodeId}`);
+        } catch (error: any) {
+          console.error(`Error enhancing transcript for episode ${episodeId}:`, error);
+          
+          // Update episode with error status
+          await storage.updateEpisode(episodeId, {
+            status: "failed",
+            progress: 0,
+            currentStep: `Enhancement failed: ${error.message}`,
+          });
+        }
+      })();
+      
+    } catch (error: any) {
+      console.error('Error handling enhance request:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message
+      });
+    }
+  });
+
+  // New endpoint to check enhancement status more efficiently
+  app.get("/api/episodes/:id/enhancement-status", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const episodeId = parseInt(id);
+      
+      if (isNaN(episodeId)) {
+        return res.status(400).json({ message: "Invalid episode ID" });
+      }
+      
+      // Only fetch the necessary fields
+      const episode = await storage.getEpisode(episodeId);
+      
+      if (!episode) {
+        return res.status(404).json({ message: "Episode not found" });
+      }
+      
+      // Return minimal status information
+      res.json({
+        episodeId,
+        status: episode.status,
+        progress: episode.progress || 0,
+        currentStep: episode.currentStep,
+        hasEnhancedTranscript: episode.hasEnhancedTranscript || false,
+        isProcessing: episode.status === "processing",
+        isCompleted: episode.status === "completed" && episode.hasEnhancedTranscript,
+        isFailed: episode.status === "failed"
+      });
+    } catch (error: any) {
+      console.error('Error checking enhancement status:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: error.message
+      });
     }
   });
 

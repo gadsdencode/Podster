@@ -30,6 +30,8 @@ export const episodes = pgTable("episodes", {
   status: text("status").notNull().default("pending"), // "pending", "processing", "completed", "failed"
   extractionMethod: text("extraction_method").notNull(), // "caption", "scraping", "audio"
   transcript: text("transcript"),
+  enhancedTranscript: text("enhanced_transcript"),
+  hasEnhancedTranscript: boolean("has_enhanced_transcript").default(false),
   summary: text("summary"),
   topics: jsonb("topics").default([]),
   wordCount: integer("word_count"),
@@ -82,6 +84,8 @@ export const insertEpisodeSchema = createInsertSchema(episodes).omit({
   thumbnailUrl: true,
   videoId: true,
   transcript: true,
+  enhancedTranscript: true,
+  hasEnhancedTranscript: true,
   summary: true,
   topics: true,
   wordCount: true,

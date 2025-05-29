@@ -143,29 +143,137 @@ export class TsCaptionScraper {
   
   private parseXmlCaptions(xml: string): string | null {
     try {
-      // Extract text from XML captions
-      const textMatches = xml.match(/<text[^>]*>([^<]+)<\/text>/g);
+      // Define interfaces for our data structures
+      interface CaptionSegment {
+        start: number;
+        duration: number;
+        text: string;
+      }
       
-      if (!textMatches || textMatches.length === 0) {
-        console.error('No text matches found in XML');
+      interface CaptionParagraph {
+        startTime: number;
+        text: string;
+      }
+      
+      // Extract text segments with timing information from XML captions
+      const segmentRegex = /<text start="([^"]+)" dur="([^"]+)"[^>]*>([^<]+)<\/text>/g;
+      let match;
+      const segments: CaptionSegment[] = [];
+      
+      while ((match = segmentRegex.exec(xml)) !== null) {
+        segments.push({
+          start: parseFloat(match[1]),
+          duration: parseFloat(match[2]),
+          text: this.decodeHtmlEntities(match[3])
+        });
+      }
+      
+      if (segments.length === 0) {
+        console.error('No text segments found in XML');
         return null;
       }
       
-      console.log(`Found ${textMatches.length} text segments`);
+      console.log(`Found ${segments.length} text segments with timing`);
       
-      // Extract text content from each match
-      const textContents = textMatches.map(match => {
-        // Remove XML tags
-        const text = match.replace(/<[^>]+>/g, '');
-        // Decode HTML entities
-        return this.decodeHtmlEntities(text);
+      // Format time as MM:SS
+      const formatTime = (seconds: number): string => {
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+      };
+      
+      // Look for sentence-ending punctuation and speaking patterns to help identify paragraph breaks
+      const isSentenceEnd = (text: string): boolean => {
+        return /[.!?]$/.test(text);
+      };
+
+      const isNewThought = (text: string): boolean => {
+        // Look for common phrase starters that suggest new thoughts
+        const starters = ['so ', 'but ', 'and ', 'now ', 'then ', 'well ', 'okay ', 'um ', 'uh ', 'next '];
+        const lowerText = text.toLowerCase();
+        return starters.some(starter => lowerText.startsWith(starter));
+      };
+      
+      // Group segments into paragraphs more intelligently for single-speaker content
+      const paragraphs: CaptionParagraph[] = [];
+      let currentParagraphSegments: CaptionSegment[] = [];
+      let lastEndTime = 0;
+      let consecutiveSentenceEnds = 0;
+      
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        const segmentEndTime = segment.start + segment.duration;
+        
+        // Add current segment to paragraph
+        currentParagraphSegments.push(segment);
+        
+        // Check if we should start a new paragraph:
+        // 1. Significant pause (2+ seconds)
+        const hasSignificantPause = i < segments.length - 1 && segments[i + 1].start - segmentEndTime > 2;
+        
+        // 2. Speaker likely ended a thought (sentence end + pause)
+        const hasCompletedThought = isSentenceEnd(segment.text) && 
+          (i < segments.length - 1 && segments[i + 1].start - segmentEndTime > 0.5);
+        
+        // 3. New thought starting (after a sentence end)
+        const isStartingNewThought = i < segments.length - 1 && 
+          isSentenceEnd(segment.text) && 
+          isNewThought(segments[i + 1].text);
+        
+        // 4. Multiple sentences in current paragraph
+        if (isSentenceEnd(segment.text)) {
+          consecutiveSentenceEnds++;
+        }
+        const hasMultipleSentences = consecutiveSentenceEnds >= 2 && currentParagraphSegments.length >= 3;
+        
+        // 5. Paragraph is getting too long
+        const isLongParagraph = currentParagraphSegments.length >= 6;
+        
+        if (hasSignificantPause || hasCompletedThought || isStartingNewThought || 
+            hasMultipleSentences || isLongParagraph) {
+          // End current paragraph and start a new one
+          if (currentParagraphSegments.length > 0) {
+            const startTime = currentParagraphSegments[0].start;
+            // Join the text with proper spacing
+            const text = currentParagraphSegments.map(seg => seg.text.trim())
+              .join(' ')
+              .replace(/\s+/g, ' ') // Clean up extra spaces
+              .replace(/ ([.,!?:;])/g, '$1'); // Remove spaces before punctuation
+            
+            paragraphs.push({ startTime, text });
+            currentParagraphSegments = [];
+            consecutiveSentenceEnds = 0;
+          }
+        }
+        
+        lastEndTime = segmentEndTime;
+      }
+      
+      // Add any remaining segments as the final paragraph
+      if (currentParagraphSegments.length > 0) {
+        const startTime = currentParagraphSegments[0].start;
+        const text = currentParagraphSegments.map(seg => seg.text.trim())
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .replace(/ ([.,!?:;])/g, '$1');
+        
+        paragraphs.push({ startTime, text });
+      }
+      
+      // We'll assume single-speaker content for most transcripts
+      // Format the transcript with timestamps and paragraphs
+      let transcript = '';
+      
+      paragraphs.forEach((para, index) => {
+        // Add timestamp at the beginning of each paragraph
+        const timeMarker = `[${formatTime(para.startTime)}] `;
+        transcript += timeMarker + para.text;
+        
+        // Add paragraph break (double newline) if not the last paragraph
+        if (index < paragraphs.length - 1) {
+          transcript += "\n\n";
+        }
       });
-      
-      // Join text segments
-      let transcript = textContents.join(' ');
-      
-      // Clean up whitespace
-      transcript = transcript.replace(/\s+/g, ' ').trim();
       
       return transcript;
     } catch (error) {

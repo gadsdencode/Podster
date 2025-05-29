@@ -181,6 +181,76 @@ function findAllPositions(text: string, keyword: string): Array<{start: number, 
 export function highlightText(text: string, keywords: KeywordHighlight[]): string {
   if (!keywords || keywords.length === 0) return text;
   
+  // Check if the text has paragraphs with timestamps
+  const hasFormattedParagraphs = text.includes('\n\n') && text.includes('[');
+  const hasMultipleSpeakers = text.includes('\n\n\n');
+  
+  if (hasFormattedParagraphs) {
+    // For multiple speakers, split by triple newlines first, then process each speaker block
+    if (hasMultipleSpeakers) {
+      const speakerBlocks = text.split('\n\n\n');
+      const highlightedBlocks = speakerBlocks.map(block => {
+        // Process each speaker block independently
+        return highlightFormattedBlock(block, keywords);
+      });
+      return highlightedBlocks.join('\n\n\n');
+    }
+    
+    // For single speaker, just process the entire text as one block
+    return highlightFormattedBlock(text, keywords);
+  }
+  
+  // If no special formatting, use the original highlighting method
+  return highlightSingleTextBlock(text, keywords);
+}
+
+// Process a block of text with paragraphs and timestamps
+function highlightFormattedBlock(block: string, keywords: KeywordHighlight[]): string {
+  // Split into paragraphs
+  const paragraphs = block.split(/\n\n+/);
+  const highlightedParagraphs = paragraphs.map(paragraph => {
+    // Extract timestamp if present (handle multiple timestamp formats)
+    // Format 1: [MM:SS] at the beginning
+    // Format 2: [MM:SS] anywhere in the text (enhanced transcripts may reposition timestamps)
+    const timestampMatch = paragraph.match(/^(\[\d+:\d+\])\s*/) || paragraph.match(/(\[\d+:\d+\])/);
+    let timestamp = '';
+    let paragraphText = paragraph;
+    
+    if (timestampMatch) {
+      timestamp = timestampMatch[1];
+      
+      // If timestamp is at the beginning, remove it for highlighting
+      if (paragraph.startsWith(timestamp)) {
+        paragraphText = paragraph.replace(/^\[\d+:\d+\]\s*/, '');
+      } else {
+        // For enhanced transcripts where timestamps might be integrated in text
+        // Replace with a marker so we can restore it after highlighting
+        const markerKey = `__TIMESTAMP_MARKER_${Math.random().toString(36).substr(2, 9)}__`;
+        paragraphText = paragraph.replace(timestampMatch[0], markerKey);
+        
+        // Highlight the paragraph text with marker
+        const highlightedText = highlightSingleTextBlock(paragraphText, keywords);
+        
+        // Restore the timestamp
+        return highlightedText.replace(markerKey, timestampMatch[0]);
+      }
+    }
+    
+    // Highlight the paragraph text (excluding timestamp)
+    const highlightedText = highlightSingleTextBlock(paragraphText, keywords);
+    
+    // Return paragraph with timestamp preserved
+    return timestamp && paragraph.startsWith(timestamp) 
+      ? `${timestamp} ${highlightedText}` 
+      : highlightedText;
+  });
+  
+  // Rejoin with double newlines
+  return highlightedParagraphs.join('\n\n');
+}
+
+// Original highlighting logic, renamed to be used as a helper
+function highlightSingleTextBlock(text: string, keywords: KeywordHighlight[]): string {
   // Create an array of all positions with their categories
   interface HighlightPosition {
     start: number;
@@ -250,7 +320,6 @@ export function highlightText(text: string, keywords: KeywordHighlight[]): strin
     result += text.substring(pos.start, pos.end);
     result += '</span>';
     
-    // Update lastIndex
     lastIndex = pos.end;
   }
   

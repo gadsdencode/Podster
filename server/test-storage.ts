@@ -90,11 +90,85 @@ async function testStorage() {
     
     console.log('Test data cleanup completed successfully');
     
+    // Test the improved transcript formatting
+    console.log("\n--- Testing Transcript Formatting ---");
+    try {
+      await testTranscriptFormatting();
+      console.log("Transcript formatting test completed successfully");
+    } catch (error) {
+      console.error("Error in transcript formatting test:", error);
+    }
+    
   } catch (error) {
     console.error('Error testing PostgresStorage:', error);
   } finally {
     process.exit(0);
   }
 }
+
+// Add a test transcript with our new format
+const formattedTranscript = `[0:00] Welcome to this podcast episode where we discuss various topics related to technology and its impact on society.
+
+[1:30] The first topic we'll cover is artificial intelligence and how it's changing the way we work. Machine learning algorithms are becoming more sophisticated every day.
+
+[3:45] Next, we'll talk about data privacy concerns in the digital age. Many users are unaware of how their personal information is being collected and used.
+
+[7:15] Finally, we'll discuss the future of remote work and how technology is enabling new ways of collaboration across distances.`;
+
+// Test function to demonstrate the improved transcript formatting
+async function testTranscriptFormatting() {
+  console.log("Testing improved transcript formatting");
+  
+  // Create a test user
+  const testUser = {
+    username: "test_user",
+    email: "test@example.com",
+    password: "password123",
+    role: "user"
+  };
+  
+  // Find or create the user
+  let user = await storage.getUserByEmail(testUser.email);
+  if (!user) {
+    user = await storage.createUser(testUser);
+    console.log(`Created test user with ID ${user.id}`);
+  }
+  
+  const formattedEpisode = {
+    youtubeUrl: `https://www.youtube.com/watch?v=test-formatted-id`,
+    extractionMethod: "caption" as "caption" | "scraping" | "audio",
+    userId: user.id,
+    status: "completed"
+  };
+  
+  // Save the formatted episode
+  const savedEpisode = await storage.createEpisode(formattedEpisode);
+  console.log(`Saved formatted episode with ID ${savedEpisode.id}`);
+  
+  // Update the episode with more data
+  const updatedEpisode = await storage.updateEpisode(savedEpisode.id, {
+    title: "Test Formatted Transcript",
+    channel: "Test Channel",
+    videoId: "test-formatted-id",
+    transcript: formattedTranscript,
+    status: "completed",
+    processingCompleted: new Date()
+  });
+  
+  if (!updatedEpisode) {
+    console.error("Failed to update episode");
+    return null;
+  }
+
+  // Retrieve the episode to verify formatting is preserved
+  const retrievedEpisode = await storage.getEpisode(updatedEpisode.id);
+  console.log("Retrieved formatted transcript:");
+  console.log(retrievedEpisode?.transcript);
+  
+  return retrievedEpisode;
+}
+
+// Export the test function
+export { testTranscriptFormatting };
 
 testStorage(); 

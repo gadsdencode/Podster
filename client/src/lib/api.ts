@@ -74,6 +74,24 @@ export const episodesApi = {
   batchProcess: async (urls: string[], extractionMethod: string): Promise<any> => {
     const response = await apiRequest("POST", "/api/batch-process", { urls, extractionMethod });
     return response.json();
+  },
+  
+  enhance: async (id: number): Promise<Response> => {
+    return await apiRequest("POST", `/api/episodes/${id}/enhance`);
+  },
+  
+  getEnhancementStatus: async (id: number): Promise<{
+    episodeId: number;
+    status: string;
+    progress: number;
+    currentStep: string;
+    hasEnhancedTranscript: boolean;
+    isProcessing: boolean;
+    isCompleted: boolean;
+    isFailed: boolean;
+  }> => {
+    const response = await apiRequest("GET", `/api/episodes/${id}/enhancement-status`);
+    return response.json();
   }
 };
 

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useSystemStats } from "@/hooks/use-episodes";
 import UserManagement from "@/components/admin/user-management";
 import SystemStats from "@/components/admin/system-stats";
+import EpisodeManagement from "@/components/admin/episode-management";
 import { 
   Settings, 
   Users, 
@@ -75,6 +76,15 @@ export default function Admin() {
             transition={{ delay: 0.2 }}
           >
             <UserManagement />
+          </motion.div>
+          
+          {/* Episode Management */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+          >
+            <EpisodeManagement />
           </motion.div>
 
           {/* Processing Queue */}
