@@ -10,6 +10,7 @@ import { TsCaptionScraper } from "./ts-caption-scraper";
 import { TsAdvancedScraper } from "./ts-advanced-scraper";
 import { KeywordAnalyzer } from "./keyword-analyzer";
 import { WebSocketService } from "./websocket";
+import { DefinitionGenerator } from "./keyword-analyzer";
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ dotenv.config();
 const captionScraper = new TsCaptionScraper();
 const advancedScraper = new TsAdvancedScraper();
 const keywordAnalyzer = new KeywordAnalyzer();
+const definitionGenerator = new DefinitionGenerator();
 
 // Mock YouTube processing functions
 const extractVideoInfo = async (url: string) => {
@@ -644,8 +646,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Keyword analysis endpoint
+  // Enhanced keyword analysis endpoint (now the default)
   app.post("/api/analyze-keywords", async (req, res) => {
+    try {
+      const { transcript, includeDefinitions = true, includeInsights = true } = req.body;
+      
+      if (!transcript) {
+        return res.status(400).json({ error: "Transcript is required" });
+      }
+
+      // Use the enhanced KeywordAnalyzer service with automatic insights and definitions
+      const analysisResult = await keywordAnalyzer.analyzeText(transcript, {
+        includeDefinitions,
+        includeInsights
+      });
+      
+      res.json(analysisResult);
+    } catch (error: any) {
+      console.error("Error analyzing keywords:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze keywords" });
+    }
+  });
+
+  // Basic keyword analysis without AI enhancements (for performance)
+  app.post("/api/analyze-keywords-basic", async (req, res) => {
     try {
       const { transcript } = req.body;
       
@@ -653,12 +677,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Transcript is required" });
       }
 
-      // Use the KeywordAnalyzer service
-      const analysisResult = await keywordAnalyzer.analyzeText(transcript);
+      // Use basic analysis without definitions or insights
+      const analysisResult = await keywordAnalyzer.analyzeText(transcript, {
+        includeDefinitions: false,
+        includeInsights: false
+      });
       
       res.json(analysisResult);
     } catch (error: any) {
       console.error("Error analyzing keywords:", error);
+      res.status(500).json({ error: error.message || "Failed to analyze keywords" });
+    }
+  });
+
+  // Generate definitions for specific keywords
+  app.post("/api/generate-definitions", async (req, res) => {
+    try {
+      const { keywords, context } = req.body;
+      
+      if (!keywords || !Array.isArray(keywords)) {
+        return res.status(400).json({ error: "Keywords array is required" });
+      }
+
+      const definitions = new Map<string, string>();
+      
+      for (const keywordData of keywords) {
+        if (keywordData.category === 'technical' || keywordData.category === 'concept') {
+          try {
+            const definition = await definitionGenerator.generateDefinition(
+              keywordData.keyword, 
+              keywordData.category, 
+              context
+            );
+            definitions.set(keywordData.keyword, definition);
+          } catch (error) {
+            console.error(`Failed to generate definition for ${keywordData.keyword}:`, error);
+          }
+        }
+      }
+      
+      res.json({ definitions: Object.fromEntries(definitions) });
+    } catch (error: any) {
+      console.error("Error generating definitions:", error);
+      res.status(500).json({ error: error.message || "Failed to generate definitions" });
+    }
+  });
+
+  // Enhanced keyword analysis with optional definitions
+  app.post("/api/analyze-keywords-with-definitions", async (req, res) => {
+    try {
+      const { transcript, includeDefinitions = false } = req.body;
+      
+      if (!transcript) {
+        return res.status(400).json({ error: "Transcript is required" });
+      }
+
+      // First, get the keyword analysis
+      const analysisResult = await keywordAnalyzer.analyzeText(transcript);
+      
+      if (includeDefinitions) {
+        // Generate definitions for technical and concept keywords
+        const keywordsWithDefinitions = await definitionGenerator.generateDefinitionsForKeywords(
+          analysisResult.keywords,
+          transcript.substring(0, 500) // Provide context from beginning of transcript
+        );
+        
+        analysisResult.keywords = keywordsWithDefinitions;
+      }
+      
+      res.json(analysisResult);
+    } catch (error: any) {
+      console.error("Error analyzing keywords with definitions:", error);
       res.status(500).json({ error: error.message || "Failed to analyze keywords" });
     }
   });

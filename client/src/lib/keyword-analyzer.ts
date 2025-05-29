@@ -9,6 +9,8 @@ export interface KeywordHighlight {
     start: number;
     end: number;
   }>;
+  definition?: string; // AI-generated definition for technical/concept keywords
+  definitionType?: 'factual' | 'balanced' | 'descriptive'; // Type of definition provided
 }
 
 export interface AnalysisResult {
@@ -19,6 +21,12 @@ export interface AnalysisResult {
     name: string[];
     concept: string[];
     action: string[];
+  };
+  analysisMetadata?: {
+    aiAnalysisSucceeded: boolean;
+    totalKeywords: number;
+    keywordsWithDefinitions: number;
+    analysisMethod: string;
   };
 }
 
@@ -32,25 +40,30 @@ const DEFAULT_TIMEOUT = 30000;
 export async function analyzeKeywords(
   transcript: string, 
   progressCallback?: AnalysisProgressCallback,
-  timeout: number = DEFAULT_TIMEOUT
+  timeout: number = DEFAULT_TIMEOUT,
+  options: { includeDefinitions?: boolean; includeInsights?: boolean } = { includeDefinitions: true, includeInsights: true }
 ): Promise<AnalysisResult> {
   try {
     // Notify that we're starting
-    progressCallback?.('Starting keyword analysis...', 10);
+    progressCallback?.('Starting AI-powered keyword analysis...', 10);
     
     // Create a controller to enable timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     
     // Start the request
-    progressCallback?.('Sending request to server...', 20);
+    progressCallback?.('Analyzing keywords with AI definitions...', 30);
     
     const response = await fetch('/api/analyze-keywords', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ transcript }),
+      body: JSON.stringify({ 
+        transcript,
+        includeDefinitions: options.includeDefinitions,
+        includeInsights: options.includeInsights
+      }),
       signal: controller.signal
     });
 
@@ -58,29 +71,64 @@ export async function analyzeKeywords(
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      progressCallback?.('Error from server', 0);
+      progressCallback?.('Server error during analysis', 0);
       throw new Error(`Failed to analyze keywords: ${response.statusText}`);
     }
 
-    progressCallback?.('Processing results...', 80);
+    progressCallback?.('Processing AI analysis results...', 80);
     const result = await response.json();
     
-    // Analysis complete
-    progressCallback?.('Analysis complete!', 100);
+    // Check if AI analysis succeeded
+    if (result.analysisMetadata) {
+      const { aiAnalysisSucceeded, keywordsWithDefinitions, analysisMethod } = result.analysisMetadata;
+      
+      if (aiAnalysisSucceeded) {
+        progressCallback?.(`AI analysis complete! ${keywordsWithDefinitions} definitions generated`, 100);
+      } else {
+        progressCallback?.(`Analysis complete using ${analysisMethod}`, 100);
+        console.warn('AI analysis failed, using fallback method');
+      }
+    } else {
+      progressCallback?.('Analysis complete!', 100);
+    }
+    
     return result;
   } catch (error) {
     console.error('Error analyzing keywords:', error);
     
     // Check if this was an abort/timeout
     if (error instanceof DOMException && error.name === 'AbortError') {
-      progressCallback?.('Analysis timed out. Using simplified analysis.', 90);
-      return generateFallbackAnalysis(transcript);
+      progressCallback?.('Analysis timed out. Trying basic analysis...', 90);
+      return await tryBasicAnalysis(transcript, progressCallback);
     }
     
-    // Other errors
-    progressCallback?.('Analysis failed. Using simplified analysis.', 90);
-    return generateFallbackAnalysis(transcript);
+    // Other errors - try basic analysis as fallback
+    progressCallback?.('AI analysis failed. Trying basic analysis...', 90);
+    return await tryBasicAnalysis(transcript, progressCallback);
   }
+}
+
+// Helper function to try basic analysis as fallback
+async function tryBasicAnalysis(transcript: string, progressCallback?: AnalysisProgressCallback): Promise<AnalysisResult> {
+  try {
+    const basicResponse = await fetch('/api/analyze-keywords-basic', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript })
+    });
+    
+    if (basicResponse.ok) {
+      const result = await basicResponse.json();
+      progressCallback?.('Basic analysis completed', 100);
+      return result;
+    }
+  } catch (basicError) {
+    console.error('Basic analysis also failed:', basicError);
+  }
+  
+  // Final fallback
+  progressCallback?.('All analysis methods failed', 0);
+  return generateFallbackAnalysis(transcript);
 }
 
 function generateFallbackAnalysis(transcript: string): AnalysisResult {
@@ -188,6 +236,8 @@ export function highlightText(text: string, keywords: KeywordHighlight[]): strin
     category: string;
     keyword: string;
     confidence: number;
+    definition?: string;
+    definitionType?: string;
   }
   
   // Collect all positions
@@ -202,7 +252,9 @@ export function highlightText(text: string, keywords: KeywordHighlight[]): strin
           end: position.end,
           category: keyword.category,
           keyword: keyword.keyword,
-          confidence: keyword.confidence
+          confidence: keyword.confidence,
+          definition: keyword.definition,
+          definitionType: keyword.definitionType
         });
       }
     }
@@ -244,9 +296,16 @@ export function highlightText(text: string, keywords: KeywordHighlight[]): strin
     // Add the highlighted portion
     const colorClass = getCategoryColor(pos.category);
     const confidenceValue = Math.round(pos.confidence * 100);
-    const titleText = `${escapeHtml(pos.category)} (${confidenceValue}% confidence)`;
     
-    result += `<span class="keyword-highlight ${escapeHtml(colorClass)}" title="${escapeHtml(titleText)}">`;
+    // Create enhanced tooltip text with AI insights and definition type
+    let titleText = createEnhancedTooltip(pos.category, confidenceValue, pos.definition, pos.definitionType);
+    
+    // Add data attributes for enhanced interactivity
+    const hasDefinition = pos.definition ? 'true' : 'false';
+    const definitionAttr = pos.definition ? `data-definition="${escapeHtml(pos.definition)}"` : '';
+    const definitionTypeAttr = pos.definitionType ? `data-definition-type="${escapeHtml(pos.definitionType)}"` : '';
+    
+    result += `<span class="keyword-highlight ${escapeHtml(colorClass)}" title="${escapeHtml(titleText)}" data-has-definition="${hasDefinition}" ${definitionAttr} ${definitionTypeAttr} data-keyword="${escapeHtml(pos.keyword)}" data-category="${escapeHtml(pos.category)}" data-confidence="${confidenceValue}">`;
     result += text.substring(pos.start, pos.end);
     result += '</span>';
     
@@ -258,6 +317,37 @@ export function highlightText(text: string, keywords: KeywordHighlight[]): strin
   result += text.substring(lastIndex);
   
   return result;
+}
+
+// Create enhanced tooltip content with AI insights and definition type indicators
+function createEnhancedTooltip(category: string, confidence: number, definition?: string, definitionType?: string): string {
+  const categoryDescriptions = {
+    'important': 'Key term that appears frequently or has high relevance',
+    'technical': 'Technical term, tool, or methodology',
+    'name': 'Person, company, or proper noun',
+    'concept': 'Abstract idea, theory, or principle',
+    'action': 'Action, process, or activity'
+  };
+  
+  let tooltip = `🏷️ ${category.toUpperCase()} (${confidence}% confidence)\n`;
+  tooltip += `${categoryDescriptions[category as keyof typeof categoryDescriptions] || 'Identified keyword'}`;
+  
+  if (definition) {
+    // Add definition type indicator
+    const typeIndicator = definitionType === 'balanced' ? '⚖️ Balanced View' : 
+                         definitionType === 'factual' ? '📚 Factual' : 
+                         '📝 Descriptive';
+    
+    tooltip += `\n\n${typeIndicator}:\n${definition}`;
+    
+    if (definitionType === 'balanced') {
+      tooltip += `\n\n💡 This definition presents multiple perspectives on a contested topic.`;
+    }
+  } else if (category === 'technical' || category === 'concept') {
+    tooltip += `\n\n💡 Click "Generate Definitions" for AI explanation`;
+  }
+  
+  return tooltip;
 }
 
 // Helper function to escape HTML special characters
@@ -284,5 +374,73 @@ function getCategoryColor(category: string): string {
       return 'bg-red-200 dark:bg-red-800/50 text-red-900 dark:text-red-200';
     default:
       return 'bg-gray-200 dark:bg-gray-800/50 text-gray-900 dark:text-gray-200';
+  }
+}
+
+// Generate definitions for specific keywords
+export async function generateDefinitions(
+  keywords: KeywordHighlight[], 
+  context?: string,
+  progressCallback?: AnalysisProgressCallback
+): Promise<Record<string, string>> {
+  try {
+    progressCallback?.('Generating definitions...', 0);
+    
+    const response = await fetch(`${API_BASE}/api/generate-definitions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        keywords: keywords.filter(k => k.category === 'technical' || k.category === 'concept'),
+        context
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    progressCallback?.('Definitions generated', 100);
+    
+    return result.definitions || {};
+  } catch (error) {
+    console.error('Error generating definitions:', error);
+    throw error;
+  }
+}
+
+// Enhanced keyword analysis with optional definitions
+export async function analyzeKeywordsWithDefinitions(
+  transcript: string,
+  includeDefinitions: boolean = false,
+  progressCallback?: AnalysisProgressCallback
+): Promise<AnalysisResult> {
+  try {
+    progressCallback?.('Starting enhanced analysis...', 0);
+    
+    const response = await fetch(`${API_BASE}/api/analyze-keywords-with-definitions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transcript,
+        includeDefinitions
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    progressCallback?.('Analysis complete', 100);
+    
+    return result;
+  } catch (error) {
+    console.error('Error in enhanced keyword analysis:', error);
+    throw error;
   }
 }
